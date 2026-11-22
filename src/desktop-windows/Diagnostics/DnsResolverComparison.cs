@@ -8,7 +8,9 @@ using System.Security.Cryptography;
 namespace NetSpeed.GameBoost.Desktop.Diagnostics;
 
 public sealed record DnsServerResult(
+    string Provider,
     string Server,
+    string Region,
     string Hostname,
     double DurationMs,
     IReadOnlyList<IPAddress> Addresses,
@@ -17,8 +19,8 @@ public sealed record DnsServerResult(
     public bool Succeeded => Error is null && Addresses.Count > 0;
 
     public string ToDisplayString() => Succeeded
-        ? $"{Server,-16} {DurationMs,7:0.0} ms  {Addresses.Count} 个地址"
-        : $"{Server,-16} 失败：{Error ?? "无地址记录"}";
+        ? $"{Region} {Provider,-10} {Server,-16} {DurationMs,7:0.0} ms  {Addresses.Count} 个地址"
+        : $"{Region} {Provider,-10} {Server,-16} 失败：{Error ?? "无地址记录"}";
 }
 
 /// <summary>
@@ -27,7 +29,24 @@ public sealed record DnsServerResult(
 /// </summary>
 public static class DnsResolverComparison
 {
-    private static readonly string[] DefaultResolvers = ["1.1.1.1", "8.8.8.8", "9.9.9.9"];
+    private sealed record ResolverEndpoint(string Provider, string Address, string Region);
+
+    // Public recursive DNS services. Mainland entries are listed first; addresses are not
+    // assumed to be reachable from every ISP or region and are measured on the user's network.
+    private static readonly ResolverEndpoint[] DefaultResolvers =
+    [
+        new("阿里云", "223.5.5.5", "中国大陆"),
+        new("阿里云", "223.6.6.6", "中国大陆"),
+        new("DNSPod", "119.29.29.29", "中国大陆"),
+        new("DNSPod", "119.28.28.28", "中国大陆"),
+        new("114DNS", "114.114.114.114", "中国大陆"),
+        new("114DNS", "114.114.115.115", "中国大陆"),
+        new("火山引擎", "180.184.1.1", "中国大陆"),
+        new("火山引擎", "180.184.2.2", "中国大陆"),
+        new("Cloudflare", "1.1.1.1", "国际"),
+        new("Google", "8.8.8.8", "国际"),
+        new("Quad9", "9.9.9.9", "国际")
+    ];
 
     public static async Task<IReadOnlyList<DnsServerResult>> CompareAsync(
         string hostname,
@@ -40,40 +59,48 @@ public static class DnsResolverComparison
         if (timeoutMs is < 250 or > 10000)
             throw new ArgumentOutOfRangeException(nameof(timeoutMs));
 
-        var resolvers = (resolverAddresses ?? DefaultResolvers)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Select(value => IPAddress.TryParse(value, out var address) ? address : null)
-            .Where(address => address is not null && address.AddressFamily == AddressFamily.InterNetwork)
-            .Cast<IPAddress>()
-            .Take(5)
+        var selected = resolverAddresses is null
+            ? DefaultResolvers
+            : resolverAddresses
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(value => new ResolverEndpoint("自定义", value, "自定义"))
+                .ToArray();
+
+        var resolvers = selected
+            .Select(endpoint => (Endpoint: endpoint,
+                Address: IPAddress.TryParse(endpoint.Address, out var address) ? address : null))
+            .Where(item => item.Address is not null &&
+                item.Address.AddressFamily == AddressFamily.InterNetwork)
+            .Take(16)
             .ToArray();
 
-        var results = new List<DnsServerResult>(resolvers.Length);
-        foreach (var resolver in resolvers)
+        var tasks = resolvers.Select(async item =>
         {
             cancellationToken.ThrowIfCancellationRequested();
             var timer = Stopwatch.StartNew();
             try
             {
-                var addresses = await QueryAAsync(hostname, resolver, timeoutMs, cancellationToken);
+                var addresses = await QueryAAsync(hostname, item.Address!, timeoutMs, cancellationToken);
                 timer.Stop();
-                results.Add(new DnsServerResult(
-                    resolver.ToString(), hostname, timer.Elapsed.TotalMilliseconds, addresses, null));
+                return new DnsServerResult(item.Endpoint.Provider, item.Address!.ToString(),
+                    item.Endpoint.Region, hostname, timer.Elapsed.TotalMilliseconds, addresses, null);
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
                 timer.Stop();
-                results.Add(new DnsServerResult(resolver.ToString(), hostname,
-                    timer.Elapsed.TotalMilliseconds, [], $"超时（{timeoutMs} ms）"));
+                return new DnsServerResult(item.Endpoint.Provider, item.Address!.ToString(),
+                    item.Endpoint.Region, hostname, timer.Elapsed.TotalMilliseconds, [],
+                    $"超时（{timeoutMs} ms）");
             }
             catch (Exception ex) when (ex is SocketException or IOException or FormatException or InvalidDataException)
             {
                 timer.Stop();
-                results.Add(new DnsServerResult(resolver.ToString(), hostname,
-                    timer.Elapsed.TotalMilliseconds, [], ex.Message));
+                return new DnsServerResult(item.Endpoint.Provider, item.Address!.ToString(),
+                    item.Endpoint.Region, hostname, timer.Elapsed.TotalMilliseconds, [], ex.Message);
             }
-        }
+        });
 
+        var results = await Task.WhenAll(tasks);
         return results.OrderBy(result => result.Succeeded ? 0 : 1)
             .ThenBy(result => result.DurationMs)
             .ToArray();
