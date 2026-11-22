@@ -5,6 +5,7 @@ using System.Net.NetworkInformation;
 using System.Windows;
 using System.Windows.Threading;
 using NetSpeed.GameBoost.Desktop.Diagnostics;
+using NetSpeed.GameBoost.Desktop.Networking;
 
 namespace NetSpeed.GameBoost.Desktop;
 
@@ -200,6 +201,42 @@ public partial class MainWindow : Window
         {
             MessageBox.Show($"无法保存游戏档案：{ex.Message}", "本地保存失败",
                 MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+
+    private async void RefreshGameConnectionsButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (GameProfileCombo.SelectedItem is not GameProfile profile)
+        {
+            GameConnectionStatus.Text = "请先选择游戏档案";
+            return;
+        }
+
+        RefreshGameConnectionsButton.IsEnabled = false;
+        RefreshGameConnectionsButton.Content = "扫描中…";
+        GameConnectionStatus.Text = $"正在读取 {profile.Name} 的 TCP / UDP 端点…";
+        GameConnectionsList.Items.Clear();
+
+        try
+        {
+            var endpoints = await GameConnectionMonitor.GetConnectionsForProcessAsync(profile.ProcessName);
+            foreach (var endpoint in endpoints.Take(100))
+                GameConnectionsList.Items.Add($"PID {endpoint.ProcessId}  {endpoint.ToDisplayString()}");
+
+            GameConnectionStatus.Text = endpoints.Count == 0
+                ? "未发现连接。游戏可能尚未联网，或系统未提供该进程的端点信息。"
+                : $"发现 {endpoints.Count} 个端点，显示最多 100 条。仅为系统连接表快照。";
+        }
+        catch (Exception ex)
+        {
+            GameConnectionStatus.Text = $"扫描失败：{ex.Message}";
+            Debug.WriteLine(ex);
+        }
+        finally
+        {
+            RefreshGameConnectionsButton.IsEnabled = true;
+            RefreshGameConnectionsButton.Content = "扫描游戏连接";
         }
     }
 
