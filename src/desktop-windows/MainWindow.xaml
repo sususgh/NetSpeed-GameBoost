@@ -61,12 +61,12 @@
                 <StackPanel DockPanel.Dock="Top">
                     <TextBlock Text="NETSPEED" FontSize="21" FontWeight="Bold" Foreground="#27D7F2"/>
                     <TextBlock Text="GAMEBOOST  /  PC" FontSize="11" Foreground="#8CA4BD" Margin="0,2,0,24"/>
-                    <Button Style="{StaticResource NavButton}" Content="◈  控制中心"/>
-                    <Button Style="{StaticResource NavButton}" Content="⌁  游戏加速"/>
-                    <Button Style="{StaticResource NavButton}" Content="◎  节点网络"/>
-                    <Button Style="{StaticResource NavButton}" Content="⇄  DNS 诊断"/>
-                    <Button Style="{StaticResource NavButton}" Content="⬡  安全防护"/>
-                    <Button Style="{StaticResource NavButton}" Content="⚙  设置"/>
+                    <Button Style="{StaticResource NavButton}" Content="◈  控制中心" Click="ControlCenterNavButton_Click" Cursor="Hand"/>
+                    <Button Style="{StaticResource NavButton}" Content="⌁  游戏加速" Click="GameNavButton_Click" Cursor="Hand"/>
+                    <Button Style="{StaticResource NavButton}" Content="◎  节点网络" Click="NodesNavButton_Click" Cursor="Hand"/>
+                    <Button Style="{StaticResource NavButton}" Content="⇄  DNS 诊断" Click="DnsNavButton_Click" Cursor="Hand"/>
+                    <Button Style="{StaticResource NavButton}" Content="⬡  安全防护" Click="SecurityNavButton_Click" Cursor="Hand"/>
+                    <Button Style="{StaticResource NavButton}" Content="⚙  设置" Click="SettingsNavButton_Click" Cursor="Hand"/>
                 </StackPanel>
                 <StackPanel DockPanel.Dock="Bottom" Margin="0,20,0,0">
                     <TextBlock Text="SYSTEM STATUS" Foreground="#8CA4BD" FontSize="10"/>
