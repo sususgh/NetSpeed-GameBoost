@@ -797,52 +797,131 @@ public partial class MainWindow : Window
         if (!backend.IsInstalled)
         {
             MessageBox.Show(
-                "尚未检测到官方 WireGuard for Windows。VPN 隧道功能需要官方客户端及其签名驱动。\n\n请先从 wireguard.com 安装官方版本，然后重新打开此入口。当前不会显示为已连接。",
+                "尚未检测到官方 WireGuard for Windows。VPN 隧道功能需要官方客户端及其签名驱动。\\n\\n请先从 wireguard.com 安装官方版本，然后重新打开此入口。当前不会显示为已连接。",
                 "VPN 后端未安装", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
-        var dialog = new OpenFileDialog
-        {
-            Title = "选择可信 VPN 服务商提供的 WireGuard 配置",
-            Filter = "WireGuard 配置 (*.conf)|*.conf",
-            CheckFileExists = true
-        };
-        if (dialog.ShowDialog(this) != true) return;
-
-        var validation = manager.ValidateConfig(dialog.FileName);
-        if (!validation.IsValid)
-        {
-            MessageBox.Show(string.Join("\n", validation.Errors), "WireGuard 配置检查失败",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        var warningText = validation.Warnings.Length == 0
-            ? ""
-            : "\n\n提醒：\n" + string.Join("\n", validation.Warnings);
-        var confirm = MessageBox.Show(
-            $"配置结构检查通过，隧道名称：{validation.InterfaceName}。{warningText}\n\n接下来将调用官方 WireGuard 安装隧道服务，并请求 Windows 管理员权限。是否继续？",
-            "安装 VPN 隧道", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-        if (confirm != MessageBoxResult.Yes) return;
-
         try
         {
+            var installedTunnels = await manager.ListTunnelsAsync();
+            if (installedTunnels.Count > 0)
+            {
+                var action = MessageBox.Show(
+                    "检测到已安装的 WireGuard 隧道：\\n" + string.Join("、", installedTunnels) +
+                    "\\n\\n选择“是”可安全卸载一个隧道；选择“否”可继续导入新配置；选择“取消”返回。",
+                    "WireGuard 隧道管理", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+                if (action == MessageBoxResult.Cancel) return;
+                if (action == MessageBoxResult.Yes)
+                {
+                    var tunnelName = SelectTunnelForRemoval(installedTunnels);
+                    if (tunnelName is null) return;
+                    var status = manager.Detect(tunnelName);
+                    var confirmRemoval = MessageBox.Show(
+                        $"即将通过官方 WireGuard CLI 卸载隧道“{tunnelName}”（当前状态：{status.State}）。是否继续？",
+                        "确认卸载 VPN 隧道", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                    if (confirmRemoval != MessageBoxResult.Yes) return;
+
+                    var removed = await manager.UninstallTunnelAsync(tunnelName);
+                    MessageBox.Show(
+                        $"已提交卸载请求。卸载后服务状态：{removed.State}。请检查系统网络恢复正常。",
+                        "VPN 隧道卸载", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+            }
+
+            var dialog = new OpenFileDialog
+            {
+                Title = "选择可信 VPN 服务商提供的 WireGuard 配置",
+                Filter = "WireGuard 配置 (*.conf)|*.conf",
+                CheckFileExists = true
+            };
+            if (dialog.ShowDialog(this) != true) return;
+
+            var validation = manager.ValidateConfig(dialog.FileName);
+            if (!validation.IsValid)
+            {
+                MessageBox.Show(string.Join("\\n", validation.Errors), "WireGuard 配置检查失败",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var warningText = validation.Warnings.Length == 0
+                ? ""
+                : "\\n\\n提醒：\\n" + string.Join("\\n", validation.Warnings);
+            var confirm = MessageBox.Show(
+                $"配置结构检查通过，隧道名称：{validation.InterfaceName}。{warningText}\\n\\n接下来将调用官方 WireGuard 安装隧道服务，并请求 Windows 管理员权限。是否继续？",
+                "安装 VPN 隧道", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (confirm != MessageBoxResult.Yes) return;
+
             var result = await manager.InstallTunnelAsync(dialog.FileName);
             MessageBox.Show(
-                $"已向 WireGuard 提交隧道服务安装请求。当前服务状态：{result.State}。\n\n注意：服务存在不等于握手成功或所有游戏流量已进入隧道。后续还需验证最新握手、路由、DNS 和 IPv6 泄漏。",
+                $"已向 WireGuard 提交隧道服务安装请求。当前服务状态：{result.State}。\\n\\n注意：服务存在不等于握手成功或所有游戏流量已进入隧道。还需验证最新握手、路由、DNS 和 IPv6 泄漏。",
                 "WireGuard 隧道服务", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (OperationCanceledException)
         {
-            MessageBox.Show("你取消了管理员权限请求，未安装隧道服务。", "操作已取消",
+            MessageBox.Show("操作已取消，未继续修改隧道服务。", "操作已取消",
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"无法安装 WireGuard 隧道服务：{ex.Message}", "VPN 安装失败",
+            MessageBox.Show($"WireGuard 操作失败：{ex.Message}", "VPN 操作失败",
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
+    }
+
+    private string? SelectTunnelForRemoval(IReadOnlyList<string> tunnelNames)
+    {
+        var panel = new StackPanel { Margin = new Thickness(18) };
+        panel.Children.Add(new TextBlock
+        {
+            Text = "选择要卸载的 WireGuard 隧道。此操作不会删除原始 .conf 文件。",
+            Foreground = Brushes.White,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 12)
+        });
+        var selector = new ComboBox
+        {
+            ItemsSource = tunnelNames,
+            SelectedIndex = tunnelNames.Count > 0 ? 0 : -1,
+            MinWidth = 300,
+            Padding = new Thickness(8)
+        };
+        panel.Children.Add(selector);
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(0, 18, 0, 0)
+        };
+        var remove = new Button { Content = "继续卸载", Padding = new Thickness(14, 7, 14, 7), Margin = new Thickness(0, 0, 8, 0), IsDefault = true };
+        var cancel = new Button { Content = "取消", Padding = new Thickness(14, 7, 14, 7), IsCancel = true };
+        buttons.Children.Add(remove);
+        buttons.Children.Add(cancel);
+        panel.Children.Add(buttons);
+        var dialog = new Window
+        {
+            Title = "选择 VPN 隧道",
+            Content = panel,
+            Width = 430,
+            Height = 190,
+            ResizeMode = ResizeMode.NoResize,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Owner = this,
+            Background = new System.Windows.Media.SolidColorBrush(Color.FromRgb(11, 19, 34))
+        };
+        remove.Click += (_, _) =>
+        {
+            if (selector.SelectedItem is null)
+            {
+                MessageBox.Show(dialog, "请先选择一个隧道。", "未选择隧道",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            dialog.DialogResult = true;
+        };
+        return dialog.ShowDialog() == true ? selector.SelectedItem as string : null;
     }
 
     private void CdnFeatureButton_Click(object sender, RoutedEventArgs e)
