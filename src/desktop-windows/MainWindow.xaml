@@ -182,7 +182,28 @@
                                      ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
                         </StackPanel>
                     </Border>
-\n                    <Border Style="{StaticResource Panel}">
+\n
+                    <Border Style="{StaticResource Panel}">
+                        <StackPanel>
+                            <DockPanel>
+                                <TextBlock Text="SMART ROUTE ANALYSIS" Foreground="#8CA4BD" FontSize="10"/>
+                                <Button x:Name="AnalyzeGameRoutesButton" DockPanel.Dock="Right"
+                                        Content="分析游戏线路" Click="AnalyzeGameRoutesButton_Click"
+                                        Background="#12364A" Foreground="#27D7F2" BorderBrush="#1C6686"
+                                        Padding="9,5"/>
+                            </DockPanel>
+                            <TextBlock x:Name="GameRouteStatus" Text="分析当前游戏连接的远端 IP"
+                                       Foreground="#8CA4BD" FontSize="10" TextWrapping="Wrap" Margin="0,7,0,5"/>
+                            <ListBox x:Name="GameRouteList" Height="105"
+                                     Background="#0B1322" Foreground="#CFE8F5"
+                                     BorderBrush="#20364D" FontFamily="Consolas" FontSize="9"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
+                            <TextBlock Text="评分为延迟 / 抖动 / 丢包的启发式指标；ICMP 可能被服务器或防火墙屏蔽。"
+                                       Foreground="#8CA4BD" FontSize="9" TextWrapping="Wrap" Margin="0,5,0,0"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Panel}">
                         <StackPanel>
                             <TextBlock Text="SECURITY" Foreground="#8CA4BD" FontSize="10"/>
                             <TextBlock Text="基础安全状态：待检测" Foreground="#F3C969" FontSize="14" Margin="0,8,0,0"/>
