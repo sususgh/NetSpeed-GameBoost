@@ -365,7 +365,7 @@ public partial class MainWindow : Window
     private static string Csv(string? value)
     {
         var text = value ?? "";
-        if (text.Length > 0 && text[0] is '=' or '+' or '-' or '@' or '\\t' or '\\r')
+        if (text.Length > 0 && text[0] is '=' or '+' or '-' or '@' or '\t' or '\r')
             text = "'" + text;
         return "\"" + text.Replace("\"", "\"\"") + "\"";
     }
