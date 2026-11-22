@@ -163,10 +163,10 @@
                             <Button x:Name="RunDiagnosticsButton" Content="开始网络质量检测" Click="RunDiagnosticsButton_Click"
                                     Background="#12364A" Foreground="#27D7F2" BorderBrush="#1C6686"
                                     Padding="10,8" Margin="0,12,0,0"/>
-                            <TextBlock Text="DNS RESOLVER COMPARISON · example.com A 记录" Foreground="#8CA4BD" FontSize="9" Margin="0,12,0,3"/>
-                            <ListBox x:Name="DnsComparisonList" Height="72" Background="#0B1322"
+                            <TextBlock Text="国内外免费 DNS 对比 · example.com A 记录" Foreground="#8CA4BD" FontSize="9" Margin="0,12,0,3"/>
+                            <ListBox x:Name="DnsComparisonList" Height="190" Background="#0B1322"
                                      Foreground="#CFE8F5" BorderBrush="#20364D" FontFamily="Consolas" FontSize="9"/>
-                            <TextBlock Text="通过 UDP/53 直接查询指定 DNS；查询未加密，仅用于测速，不会修改系统 DNS。"
+                            <TextBlock Text="含阿里云、DNSPod、114DNS、火山引擎及国际 DNS；UDP/53 明文测速，不修改系统 DNS。"
                                        Foreground="#8CA4BD" FontSize="9" TextWrapping="Wrap" Margin="0,3,0,0"/>
                             <TextBlock Text="NETWORK HEALTH · 每 8 秒检测一次" Foreground="#8CA4BD" FontSize="9" Margin="0,12,0,3"/>
                             <TextBlock x:Name="NetworkHealthStatus" Text="网络健康监测初始化中…" Foreground="#65E6C2"
