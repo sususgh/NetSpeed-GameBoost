@@ -144,7 +144,8 @@
                     </Grid>
                 </Border>
 
-                <StackPanel Grid.Column="1">
+                <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel>
                     <Border Style="{StaticResource Panel}">
                         <StackPanel>
                             <TextBlock Text="ACCELERATION STATUS" Foreground="#8CA4BD" FontSize="10"/>
@@ -237,7 +238,8 @@
                             <TextBlock Text="基础安全状态：待检测" Foreground="#F3C969" FontSize="14" Margin="0,8,0,0"/>
                         </StackPanel>
                     </Border>
-                </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
             </Grid>
 
             <UniformGrid Grid.Row="3" Columns="4" Margin="0,4,0,0">
