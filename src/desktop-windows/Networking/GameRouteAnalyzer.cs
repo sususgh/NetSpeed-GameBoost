@@ -91,7 +91,7 @@ public static class GameRouteAnalyzer
                 value = value[..lastColon];
         }
 
-        return IPAddress.TryParse(value, out address!);
+        if (!IPAddress.TryParse(value, out var parsed))\n            return false;\n\n        address = parsed;\n        return true;
     }
 
     private static bool IsUsableUnicast(IPAddress address)
