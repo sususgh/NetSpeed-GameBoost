@@ -61,6 +61,62 @@ public sealed class ProductLogicTests
     }
 
     [Fact]
+    public void WireGuardConfig_InvalidBase64Key_IsRejected()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"netspeed-{Guid.NewGuid():N}.conf");
+        try
+        {
+            File.WriteAllText(path, """
+                [Interface]
+                PrivateKey=not-a-valid-key
+                Address=10.0.0.2/32
+
+                [Peer]
+                PublicKey=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+                AllowedIPs=0.0.0.0/0
+                Endpoint=198.51.100.1:51820
+                """);
+
+            var result = new WireGuardTunnelManager().ValidateConfig(path);
+
+            Assert.False(result.IsValid);
+            Assert.Contains(result.Errors, error => error.Contains("PrivateKey", StringComparison.Ordinal));
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void WireGuardConfig_InvalidEndpoint_IsRejected()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"netspeed-{Guid.NewGuid():N}.conf");
+        try
+        {
+            File.WriteAllText(path, """
+                [Interface]
+                PrivateKey=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+                Address=10.0.0.2/32
+
+                [Peer]
+                PublicKey=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+                AllowedIPs=0.0.0.0/0
+                Endpoint=not-a-host:70000
+                """);
+
+            var result = new WireGuardTunnelManager().ValidateConfig(path);
+
+            Assert.False(result.IsValid);
+            Assert.Contains(result.Errors, error => error.Contains("Endpoint", StringComparison.Ordinal));
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void RelayCatalog_SaveAndLoad_RoundTripsNode()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"netspeed-{Guid.NewGuid():N}");
