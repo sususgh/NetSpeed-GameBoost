@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Security.Cryptography;
 
 namespace NetSpeed.GameBoost.Desktop.Diagnostics;
 
@@ -88,6 +89,8 @@ public static class DnsResolverComparison
 
         await client.SendAsync(query, new IPEndPoint(resolver, 53), timeout.Token);
         var response = await client.ReceiveAsync(timeout.Token);
+        if (!response.RemoteEndPoint.Address.Equals(resolver) || response.RemoteEndPoint.Port != 53)
+            throw new InvalidDataException("DNS 响应来源地址不匹配");
         return ParseResponse(response.Buffer, transactionId);
     }
 
@@ -97,7 +100,7 @@ public static class DnsResolverComparison
         if (labels.Length == 0 || labels.Any(label => label.Length is 0 or > 63))
             throw new FormatException("域名格式无效");
 
-        transactionId = (ushort)Random.Shared.Next(1, ushort.MaxValue);
+        transactionId = (ushort)RandomNumberGenerator.GetInt32(1, ushort.MaxValue);
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream);
         writer.Write((byte)(transactionId >> 8));
@@ -128,6 +131,8 @@ public static class DnsResolverComparison
         var flags = BinaryPrimitives.ReadUInt16BigEndian(packet.AsSpan(2, 2));
         if ((flags & 0x8000) == 0)
             throw new InvalidDataException("收到的不是 DNS 响应");
+        if ((flags & 0x0200) != 0)
+            throw new InvalidDataException("DNS 响应被截断（TC）");
         var responseCode = flags & 0x000F;
         if (responseCode != 0)
             throw new InvalidDataException($"DNS RCODE={responseCode}");
