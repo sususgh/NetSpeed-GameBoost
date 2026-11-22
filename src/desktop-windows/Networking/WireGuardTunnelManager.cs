@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.IO;
+using System.Net;
+using System.Net.Sockets;
 using System.Text.RegularExpressions;
 
 namespace NetSpeed.GameBoost.Desktop.Networking;
@@ -88,28 +90,109 @@ public sealed class WireGuardTunnelManager
         catch (Exception ex) { return new(false, name, [$"无法读取配置文件：{ex.Message}"], []); }
 
         bool Section(string section) => lines.Any(x => x.Trim().Equals($"[{section}]", StringComparison.OrdinalIgnoreCase));
-        bool Key(string section, string key)
+        bool TryGetValue(string section, string key, out string value)
         {
             var active = "";
             foreach (var raw in lines)
             {
                 var line = raw.Trim();
-                if (line.StartsWith("[") && line.EndsWith("]")) active = line[1..^1];
-                else if (active.Equals(section, StringComparison.OrdinalIgnoreCase) &&
-                         line.StartsWith(key + "=", StringComparison.OrdinalIgnoreCase)) return true;
+                if (line.Length == 0 || line.StartsWith('#') || line.StartsWith(';')) continue;
+                if (line.StartsWith("[") && line.EndsWith("]"))
+                {
+                    active = line[1..^1].Trim();
+                    continue;
+                }
+
+                var separator = line.IndexOf('=');
+                if (separator > 0 && active.Equals(section, StringComparison.OrdinalIgnoreCase) &&
+                    line[..separator].Trim().Equals(key, StringComparison.OrdinalIgnoreCase))
+                {
+                    value = line[(separator + 1)..].Trim();
+                    return value.Length > 0;
+                }
             }
+
+            value = "";
             return false;
         }
 
         if (!Section("Interface")) errors.Add("缺少 [Interface] 段。");
         if (!Section("Peer")) errors.Add("缺少 [Peer] 段。");
-        if (!Key("Interface", "PrivateKey")) errors.Add("Interface 缺少 PrivateKey。");
-        if (!Key("Peer", "PublicKey")) errors.Add("Peer 缺少 PublicKey。");
-        if (!Key("Peer", "Endpoint")) errors.Add("Peer 缺少 Endpoint。");
-        if (!Key("Interface", "Address")) warnings.Add("未发现 Address，请核对服务端分配的隧道地址。");
-        if (!Key("Peer", "AllowedIPs")) warnings.Add("未发现 AllowedIPs，请核对路由范围。");
-        if (!NamePattern.IsMatch(name)) errors.Add("配置文件名（隧道名）必须为 1–15 位字母、数字或 _=+.-。");
+        if (!TryGetValue("Interface", "PrivateKey", out var privateKey))
+            errors.Add("Interface 缺少 PrivateKey 或其值为空。");
+        else if (!IsValidWireGuardKey(privateKey))
+            errors.Add("Interface PrivateKey 不是有效的 32 字节 Base64 WireGuard 密钥。");
+
+        if (!TryGetValue("Peer", "PublicKey", out var publicKey))
+            errors.Add("Peer 缺少 PublicKey 或其值为空。");
+        else if (!IsValidWireGuardKey(publicKey))
+            errors.Add("Peer PublicKey 不是有效的 32 字节 Base64 WireGuard 密钥。");
+
+        if (!TryGetValue("Peer", "Endpoint", out var endpoint))
+            errors.Add("Peer 缺少 Endpoint 或其值为空。");
+        else if (!IsValidEndpoint(endpoint))
+            errors.Add("Peer Endpoint 格式无效；请使用域名或 IP 加端口，例如 vpn.example.com:51820 或 [IPv6]:51820。");
+
+        if (!TryGetValue("Interface", "Address", out var address))
+            warnings.Add("未发现 Address，请核对服务端分配的隧道地址。");
+        else if (!IsValidCidrList(address))
+            errors.Add("Interface Address 中存在无效的 IP/CIDR 地址。");
+
+        if (!TryGetValue("Peer", "AllowedIPs", out var allowedIps))
+            warnings.Add("未发现 AllowedIPs；未配置路由范围时，隧道可能不会承载预期流量。");
+        else if (!IsValidCidrList(allowedIps))
+            errors.Add("Peer AllowedIPs 中存在无效的 IP/CIDR 地址。");
+
+        if (!NamePattern.IsMatch(name))
+            errors.Add("配置文件名（隧道名）必须为 1–15 位字母、数字或 _=+.-。");
         return new(errors.Count == 0, name, errors.ToArray(), warnings.ToArray());
+    }
+
+    private static bool IsValidWireGuardKey(string value)
+    {
+        try { return Convert.FromBase64String(value).Length == 32; }
+        catch (FormatException) { return false; }
+    }
+
+    private static bool IsValidEndpoint(string value)
+    {
+        string host;
+        string portText;
+        if (value.StartsWith("[", StringComparison.Ordinal))
+        {
+            var close = value.IndexOf("]:", StringComparison.Ordinal);
+            if (close <= 1) return false;
+            host = value[1..close];
+            portText = value[(close + 2)..];
+            if (!IPAddress.TryParse(host, out var ipv6) || ipv6.AddressFamily != AddressFamily.InterNetworkV6)
+                return false;
+        }
+        else
+        {
+            var separator = value.LastIndexOf(':');
+            if (separator <= 0 || value.IndexOf(':') != separator) return false;
+            host = value[..separator];
+            portText = value[(separator + 1)..];
+            if (!IPAddress.TryParse(host, out _) && Uri.CheckHostName(host) != UriHostNameType.Dns)
+                return false;
+        }
+
+        return int.TryParse(portText, out var port) && port is >= 1 and <= 65535;
+    }
+
+    private static bool IsValidCidrList(string value)
+    {
+        var entries = value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        return entries.Length > 0 && entries.All(entry =>
+        {
+            var separator = entry.IndexOf('/');
+            if (separator <= 0 || !IPAddress.TryParse(entry[..separator], out var address) ||
+                !int.TryParse(entry[(separator + 1)..], out var prefix))
+                return false;
+            var maxPrefix = address.AddressFamily == AddressFamily.InterNetwork ? 32 :
+                address.AddressFamily == AddressFamily.InterNetworkV6 ? 128 : -1;
+            return prefix >= 0 && prefix <= maxPrefix;
+        });
     }
 
     public async Task<WireGuardBackendStatus> InstallTunnelAsync(string configPath, CancellationToken token = default)
