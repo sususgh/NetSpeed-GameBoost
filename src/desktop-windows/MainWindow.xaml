@@ -163,6 +163,14 @@
                             <Button x:Name="RunDiagnosticsButton" Content="开始网络质量检测" Click="RunDiagnosticsButton_Click"
                                     Background="#12364A" Foreground="#27D7F2" BorderBrush="#1C6686"
                                     Padding="10,8" Margin="0,12,0,0"/>
+                            <TextBlock Text="DNS RESOLVER COMPARISON · example.com A 记录" Foreground="#8CA4BD" FontSize="9" Margin="0,12,0,3"/>
+                            <ListBox x:Name="DnsComparisonList" Height="72" Background="#0B1322"
+                                     Foreground="#CFE8F5" BorderBrush="#20364D" FontFamily="Consolas" FontSize="9"/>
+                            <TextBlock Text="NETWORK HEALTH · 每 8 秒检测一次" Foreground="#8CA4BD" FontSize="9" Margin="0,12,0,3"/>
+                            <TextBlock x:Name="NetworkHealthStatus" Text="网络健康监测初始化中…" Foreground="#65E6C2"
+                                       FontSize="11" TextWrapping="Wrap"/>
+                            <ListBox x:Name="NetworkHealthEventsList" Height="78" Background="#0B1322"
+                                     Foreground="#CFE8F5" BorderBrush="#20364D" FontSize="9"/>
                         </StackPanel>
                     </Border>
 
