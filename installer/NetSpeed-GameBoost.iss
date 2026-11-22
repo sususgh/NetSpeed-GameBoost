@@ -1,5 +1,7 @@
 #define AppName "NetSpeed GameBoost"
-#define AppVersion "1.1.0"
+#ifndef AppVersion
+  #define AppVersion "1.2.0"
+#endif
 #define AppPublisher "NetSpeed GameBoost"
 #define AppExeName "NetSpeed.GameBoost.Desktop.exe"
 
