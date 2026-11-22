@@ -206,7 +206,7 @@
                                      Background="#0B1322" Foreground="#CFE8F5"
                                      BorderBrush="#20364D" FontFamily="Consolas" FontSize="9"
                                      ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
-                            <TextBlock Text="最近线路质量趋势（本机历史）" Foreground="#8CA4BD" FontSize="9" Margin="0,9,0,3"/>
+                            <TextBlock Text="同一远端 IP 的线路评分趋势（本机历史）" Foreground="#8CA4BD" FontSize="9" Margin="0,9,0,3"/>
                             <Canvas x:Name="RouteHistoryChart" Height="58" Background="#0B1322" ClipToBounds="True"/>
                             <ListBox x:Name="RouteHistoryList" Height="58"
                                      Background="#0B1322" Foreground="#AFC8D8"
