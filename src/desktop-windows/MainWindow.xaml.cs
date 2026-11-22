@@ -37,6 +37,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _networkHealthTimer = new() { Interval = TimeSpan.FromSeconds(8) };
     private CancellationTokenSource? _networkHealthCts;
     private bool _networkHealthPollRunning;
+    private IReadOnlyList<DnsServerResult> _lastDnsResolverResults = Array.Empty<DnsServerResult>();
 
     public MainWindow()
     {
@@ -89,6 +90,7 @@ public partial class MainWindow : Window
             var ping = await pingTask;
             var dns = await systemDnsTask;
             var resolverResults = await resolverTask;
+            _lastDnsResolverResults = resolverResults;
 
             PingText.Text = double.IsNaN(ping.AverageLatencyMs)
                 ? "延迟    超时 / 无响应"
@@ -412,6 +414,17 @@ public partial class MainWindow : Window
                     Csv(entry.GameName), Csv(""), Csv(""), Csv(entry.RemoteAddress), Csv(""),
                     Csv("ICMP latency ms"), Csv(entry.IcmpLatencyMs?.ToString("0.0") ?? ""),
                     Csv($"Jitter={entry.JitterMs:0.0}; Loss={entry.PacketLossPercent:0.0}%; Score={entry.QualityScore:0.0}; TCP={entry.TcpConnectLatencyMs?.ToString("0.0") ?? "n/a"}")
+                }));
+            }
+
+            foreach (var result in _lastDnsResolverResults)
+            {
+                builder.AppendLine(string.Join(",", new[]
+                {
+                    Csv("DnsResolver"), Csv(DateTime.Now.ToString("O")), Csv(profile.Name),
+                    Csv("UDP/53"), Csv(""), Csv(result.Server), Csv(result.Succeeded ? "Success" : "Failed"),
+                    Csv("ResolutionMs"), Csv(result.DurationMs.ToString("0.0")),
+                    Csv($"Host={result.Hostname}; Addresses={string.Join(";", result.Addresses)}; Error={result.Error ?? ""}")
                 }));
             }
 
