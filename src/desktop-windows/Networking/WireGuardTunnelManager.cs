@@ -31,6 +31,47 @@ public sealed class WireGuardTunnelManager
         return new(true, exe, tunnelName, state, output.Trim());
     }
 
+    public async Task<IReadOnlyList<string>> ListTunnelsAsync(CancellationToken token = default)
+    {
+        using var process = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = "sc.exe",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            }
+        };
+        foreach (var argument in new[] { "query", "type=", "service", "state=", "all" })
+            process.StartInfo.ArgumentList.Add(argument);
+
+        if (!process.Start()) return [];
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        try
+        {
+            var stdout = process.StandardOutput.ReadToEndAsync(timeout.Token);
+            var stderr = process.StandardError.ReadToEndAsync(timeout.Token);
+            await process.WaitForExitAsync(timeout.Token);
+            var output = (await stdout) + Environment.NewLine + (await stderr);
+            if (process.ExitCode != 0) return [];
+            return Regex.Matches(output, @"SERVICE_NAME:\\s*WireGuardTunnel\\$(?<name>[A-Za-z0-9_=+.-]{1,15})",
+                    RegexOptions.IgnoreCase)
+                .Select(match => match.Groups["name"].Value)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+        catch (OperationCanceledException)
+        {
+            try { if (!process.HasExited) process.Kill(entireProcessTree: true); }
+            catch (InvalidOperationException) { }
+            throw;
+        }
+    }
+
     public WireGuardConfigValidation ValidateConfig(string path)
     {
         var errors = new List<string>();
