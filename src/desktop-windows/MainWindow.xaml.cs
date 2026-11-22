@@ -240,6 +240,43 @@ public partial class MainWindow : Window
         }
     }
 
+
+    private async void AnalyzeGameRoutesButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (GameProfileCombo.SelectedItem is not GameProfile profile)
+        {
+            GameRouteStatus.Text = "请先选择游戏档案";
+            return;
+        }
+
+        AnalyzeGameRoutesButton.IsEnabled = false;
+        AnalyzeGameRoutesButton.Content = "分析中…";
+        GameRouteStatus.Text = "正在读取游戏端点并进行有限次数的 ICMP 测量…";
+        GameRouteList.Items.Clear();
+
+        try
+        {
+            var endpoints = await GameConnectionMonitor.GetConnectionsForProcessAsync(profile.ProcessName);
+            var results = await GameRouteAnalyzer.AnalyzeAsync(endpoints, maxTargets: 5);
+            foreach (var result in results)
+                GameRouteList.Items.Add(result.ToDisplayString());
+
+            GameRouteStatus.Text = results.Count == 0
+                ? "没有可测量的单播 IP 端点。可能是 UDP 对端不可见、游戏未联网或系统权限受限。"
+                : $"已测量 {results.Count} 个远端 IP，按诊断评分排序。评分不是实际加速效果保证。";
+        }
+        catch (Exception ex)
+        {
+            GameRouteStatus.Text = $"线路分析失败：{ex.Message}";
+            Debug.WriteLine(ex);
+        }
+        finally
+        {
+            AnalyzeGameRoutesButton.IsEnabled = true;
+            AnalyzeGameRoutesButton.Content = "分析游戏线路";
+        }
+    }
+
     private void UpdateNetworkStats()
     {
         try
