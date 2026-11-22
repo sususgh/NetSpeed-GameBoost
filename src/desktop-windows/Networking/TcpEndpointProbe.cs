@@ -98,10 +98,14 @@ public static class TcpEndpointProbe
             portText = value[(separator + 1)..];
         }
 
-        return IPAddress.TryParse(host, out address!) &&
-               int.TryParse(portText, out port) &&
-               port is > 0 and <= 65535 &&
-               !IPAddress.IsLoopback(address) &&
-               !address.IsIPv6Multicast;
+        if (!IPAddress.TryParse(host, out var parsed) ||
+            !int.TryParse(portText, out port) ||
+            port is <= 0 or > 65535 ||
+            IPAddress.IsLoopback(parsed) ||
+            parsed.IsIPv6Multicast)
+            return false;
+
+        address = parsed;
+        return true;
     }
 }
