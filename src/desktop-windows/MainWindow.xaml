@@ -200,6 +200,17 @@
                                      ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
                             <TextBlock Text="评分为延迟 / 抖动 / 丢包的启发式指标；ICMP 可能被服务器或防火墙屏蔽。"
                                        Foreground="#8CA4BD" FontSize="9" TextWrapping="Wrap" Margin="0,5,0,0"/>
+                            <TextBlock Text="TCP CONNECT · 仅测试游戏已建立连接表中观察到的 TCP 端点"
+                                       Foreground="#8CA4BD" FontSize="9" Margin="0,9,0,3"/>
+                            <ListBox x:Name="TcpProbeList" Height="62"
+                                     Background="#0B1322" Foreground="#CFE8F5"
+                                     BorderBrush="#20364D" FontFamily="Consolas" FontSize="9"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
+                            <TextBlock Text="最近线路质量趋势（本机历史）" Foreground="#8CA4BD" FontSize="9" Margin="0,9,0,3"/>
+                            <Canvas x:Name="RouteHistoryChart" Height="58" Background="#0B1322" ClipToBounds="True"/>
+                            <ListBox x:Name="RouteHistoryList" Height="58"
+                                     Background="#0B1322" Foreground="#AFC8D8"
+                                     BorderBrush="#20364D" FontSize="9"/>
                         </StackPanel>
                     </Border>
 
