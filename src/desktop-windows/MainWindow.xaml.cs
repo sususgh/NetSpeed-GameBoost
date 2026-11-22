@@ -423,7 +423,7 @@ public partial class MainWindow : Window
                 builder.AppendLine(string.Join(",", new[]
                 {
                     Csv("DnsResolver"), Csv(DateTime.Now.ToString("O")), Csv(profile.Name),
-                    Csv(result.Region), Csv(result.Provider), Csv(result.Server), Csv(result.Succeeded ? "Success" : "Failed"),
+                    Csv(result.Region), Csv(result.Provider), Csv("DoH/HTTPS TLS"), Csv(result.Succeeded ? "Success" : "Failed"),
                     Csv("ResolutionMs"), Csv(result.DurationMs.ToString("0.0")),
                     Csv($"Host={result.Hostname}; Addresses={string.Join(";", result.Addresses)}; Error={result.Error ?? ""}")
                 }));
