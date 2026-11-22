@@ -111,9 +111,13 @@
                     <Border Style="{StaticResource Panel}">
                         <StackPanel>
                             <TextBlock Text="NETWORK QUALITY" Foreground="#8CA4BD" FontSize="10"/>
-                            <TextBlock Text="延迟    -- ms" FontSize="17" Margin="0,8,0,2"/>
-                            <TextBlock Text="抖动    -- ms" FontSize="17" Margin="0,2"/>
-                            <TextBlock Text="丢包    -- %" FontSize="17" Margin="0,2"/>
+                            <TextBlock x:Name="PingText" Text="延迟    -- ms" FontSize="17" Margin="0,8,0,2"/>
+                            <TextBlock x:Name="JitterText" Text="抖动    -- ms" FontSize="17" Margin="0,2"/>
+                            <TextBlock x:Name="LossText" Text="丢包    -- %" FontSize="17" Margin="0,2"/>
+                            <TextBlock x:Name="PingDetailText" Text="等待测试" FontSize="10" Foreground="#8CA4BD" Margin="0,6,0,0"/>
+                            <Button x:Name="RunDiagnosticsButton" Content="开始网络质量检测" Click="RunDiagnosticsButton_Click"
+                                    Background="#12364A" Foreground="#27D7F2" BorderBrush="#1C6686"
+                                    Padding="10,8" Margin="0,12,0,0"/>
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource Panel}">
