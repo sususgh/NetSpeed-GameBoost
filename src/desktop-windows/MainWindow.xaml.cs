@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net.NetworkInformation;
 using System.Windows;
 using System.Windows.Threading;
+using NetSpeed.GameBoost.Desktop.Diagnostics;
 
 namespace NetSpeed.GameBoost.Desktop;
 
@@ -12,6 +13,7 @@ public partial class MainWindow : Window
     private long _lastSent;
     private DateTime _lastSampleUtc;
     private bool _hasSample;
+    private CancellationTokenSource? _diagnosticsCts;
 
     public MainWindow()
     {
@@ -22,7 +24,56 @@ public partial class MainWindow : Window
             UpdateNetworkStats();
             _timer.Start();
         };
-        Closed += (_, _) => _timer.Stop();
+        Closed += (_, _) =>
+        {
+            _timer.Stop();
+            _diagnosticsCts?.Cancel();
+            _diagnosticsCts?.Dispose();
+        };
+    }
+
+    private async void RunDiagnosticsButton_Click(object sender, RoutedEventArgs e)
+    {
+        RunDiagnosticsButton.IsEnabled = false;
+        RunDiagnosticsButton.Content = "检测中…";
+        _diagnosticsCts?.Cancel();
+        _diagnosticsCts?.Dispose();
+        _diagnosticsCts = new CancellationTokenSource();
+
+        try
+        {
+            var token = _diagnosticsCts.Token;
+            // A public anycast address is used only as a diagnostic target; ICMP may be filtered.
+            var pingTask = NetworkDiagnostics.MeasurePingAsync("1.1.1.1", 10, 1200, token);
+            var dnsTask = NetworkDiagnostics.MeasureSystemDnsAsync("example.com", token);
+            await Task.WhenAll(pingTask, dnsTask);
+
+            var ping = await pingTask;
+            var dns = await dnsTask;
+
+            PingText.Text = double.IsNaN(ping.AverageLatencyMs)
+                ? "延迟    超时 / 无响应"
+                : $"延迟    {ping.AverageLatencyMs:0.0} ms";
+            JitterText.Text = double.IsNaN(ping.JitterMs)
+                ? "抖动    -- ms"
+                : $"抖动    {ping.JitterMs:0.0} ms";
+            LossText.Text = $"丢包    {ping.PacketLossPercent:0.0}%";
+            PingDetailText.Text = $"目标 {ping.Host} · {ping.Received}/{ping.Sent} 成功 · DNS {dns.DurationMs:0.0} ms";
+        }
+        catch (OperationCanceledException)
+        {
+            PingDetailText.Text = "检测已取消";
+        }
+        catch (Exception ex)
+        {
+            PingDetailText.Text = $"检测失败：{ex.Message}";
+            Debug.WriteLine(ex);
+        }
+        finally
+        {
+            RunDiagnosticsButton.IsEnabled = true;
+            RunDiagnosticsButton.Content = "重新检测网络质量";
+        }
     }
 
     private void UpdateNetworkStats()
