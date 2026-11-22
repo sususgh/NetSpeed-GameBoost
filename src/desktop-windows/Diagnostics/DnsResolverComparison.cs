@@ -99,7 +99,7 @@ public static class DnsResolverComparison
             catch (Exception ex) when (ex is HttpRequestException or IOException or FormatException or InvalidDataException)
             {
                 timer.Stop();
-                return new DnsServerResult(item.Endpoint.Provider, item.Address!.ToString(),
+                return new DnsServerResult(item.Endpoint.Provider, item.Uri!.ToString(),
                     item.Endpoint.Region, hostname, timer.Elapsed.TotalMilliseconds, [], ex.Message);
             }
         });
