@@ -4,6 +4,7 @@ using Path = System.IO.Path;
 using System.Diagnostics;
 using NetSpeed.GameBoost.Desktop.Profiles;
 using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Windows;
 using System.Windows.Threading;
 using System.Windows.Media;
@@ -676,6 +677,115 @@ public partial class MainWindow : Window
         return bytesPerSecond >= mb
             ? $"{bytesPerSecond / mb:0.00} MB/s"
             : $"{bytesPerSecond / kb:0.0} KB/s";
+    }
+
+
+    private void ControlCenterNavButton_Click(object sender, RoutedEventArgs e)
+    {
+        PingText.BringIntoView();
+        PingDetailText.Text = "控制中心：本机流量、网络质量与游戏连接监测";
+    }
+
+    private void GameNavButton_Click(object sender, RoutedEventArgs e)
+    {
+        GameProfileCombo.BringIntoView();
+        GameProfileCombo.Focus();
+        if (GameProfileCombo.SelectedItem is GameProfile)
+            AnalyzeGameRoutesButton_Click(sender, e);
+        else
+            GameConnectionStatus.Text = "先添加游戏档案：填写游戏名称和 EXE 进程名，再扫描连接与分析线路。";
+    }
+
+    private void NodesNavButton_Click(object sender, RoutedEventArgs e)
+    {
+        ShowNodeProbeWindow();
+    }
+
+    private void DnsNavButton_Click(object sender, RoutedEventArgs e)
+    {
+        DnsComparisonList.BringIntoView();
+        RunDiagnosticsButton_Click(sender, e);
+    }
+
+    private void SecurityNavButton_Click(object sender, RoutedEventArgs e)
+    {
+        var result = MessageBox.Show(
+            "NetSpeed 当前提供网络连接观测和 DoH/TLS 诊断，不是杀毒软件，也没有启用 VPN Kill Switch。\n\n是否打开 Windows 安全中心，查看 Defender 与防火墙的系统状态？",
+            "安全防护", MessageBoxButton.YesNo, MessageBoxImage.Information);
+        if (result == MessageBoxResult.Yes)
+        {
+            try { Process.Start(new ProcessStartInfo("windowsdefender:") { UseShellExecute = true }); }
+            catch (Exception ex) { MessageBox.Show($"无法打开 Windows 安全中心：{ex.Message}"); }
+        }
+    }
+
+    private void SettingsNavButton_Click(object sender, RoutedEventArgs e)
+    {
+        var panel = new StackPanel { Margin = new Thickness(18) };
+        panel.Children.Add(new TextBlock { Text = "实时采样间隔（秒）", Foreground = Brushes.White, Margin = new Thickness(0, 0, 0, 8) });
+        var intervalInput = new TextBox { Text = Math.Clamp((int)_timer.Interval.TotalSeconds, 1, 10).ToString(), Width = 100, Padding = new Thickness(8), Background = new System.Windows.Media.SolidColorBrush(Color.FromRgb(20,40,58)), Foreground = Brushes.White };
+        panel.Children.Add(intervalInput);
+        panel.Children.Add(new TextBlock { Text = "设置范围：1–10 秒。修改后立即生效。", Foreground = Brushes.LightGray, Margin = new Thickness(0, 8, 0, 0) });
+        var buttons = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 18, 0, 0) };
+        var save = new Button { Content = "应用", Padding = new Thickness(16, 7, 16, 7), Margin = new Thickness(0, 0, 8, 0), IsDefault = true };
+        var cancel = new Button { Content = "取消", Padding = new Thickness(16, 7, 16, 7), IsCancel = true };
+        buttons.Children.Add(save); buttons.Children.Add(cancel); panel.Children.Add(buttons);
+        var dialog = new Window { Title = "NetSpeed 设置", Content = panel, Width = 360, Height = 210, ResizeMode = ResizeMode.NoResize, WindowStartupLocation = WindowStartupLocation.CenterOwner, Owner = this, Background = new System.Windows.Media.SolidColorBrush(Color.FromRgb(11,19,34)) };
+        save.Click += (_, _) =>
+        {
+            if (!int.TryParse(intervalInput.Text, out var seconds) || seconds is < 1 or > 10)
+            {
+                MessageBox.Show(dialog, "请输入 1 到 10 之间的整数。", "设置无效", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            _timer.Interval = TimeSpan.FromSeconds(seconds);
+            dialog.DialogResult = true;
+            dialog.Close();
+        };
+        dialog.ShowDialog();
+    }
+
+    private void ShowNodeProbeWindow()
+    {
+        var panel = new StackPanel { Margin = new Thickness(16) };
+        panel.Children.Add(new TextBlock { Text = "输入你自己的节点地址（主机名或 IP:端口），进行 TCP 可达性测试。此测试不建立 VPN 隧道。", TextWrapping = TextWrapping.Wrap, Foreground = Brushes.White, Margin = new Thickness(0,0,0,10) });
+        var endpointInput = new TextBox { Text = "host.example.com:443", Padding = new Thickness(8), Margin = new Thickness(0,0,0,10) };
+        panel.Children.Add(endpointInput);
+        var output = new ListBox { Height = 170, Background = new System.Windows.Media.SolidColorBrush(Color.FromRgb(7,11,22)), Foreground = Brushes.White };
+        panel.Children.Add(output);
+        var probe = new Button { Content = "测试节点 TCP 延迟", Padding = new Thickness(12,8,12,8), HorizontalAlignment = HorizontalAlignment.Right };
+        panel.Children.Add(probe);
+        var dialog = new Window { Title = "节点网络检测", Content = panel, Width = 520, Height = 330, WindowStartupLocation = WindowStartupLocation.CenterOwner, Owner = this, Background = new System.Windows.Media.SolidColorBrush(Color.FromRgb(11,19,34)) };
+        probe.Click += async (_, _) =>
+        {
+            var raw = endpointInput.Text.Trim();
+            string host; int port;
+            if (raw.StartsWith("[", StringComparison.Ordinal) && raw.Contains("]:"))
+            {
+                var split = raw.IndexOf("]:", StringComparison.Ordinal);
+                host = raw[1..split];
+                if (!int.TryParse(raw[(split+2)..], out port)) port = -1;
+            }
+            else
+            {
+                var split = raw.LastIndexOf(':');
+                if (split <= 0 || !int.TryParse(raw[(split+1)..], out port)) { output.Items.Insert(0, "格式错误，请使用 host:port 或 [IPv6]:port"); return; }
+                host = raw[..split];
+            }
+            if (string.IsNullOrWhiteSpace(host) || port is < 1 or > 65535) { output.Items.Insert(0, "主机名或端口无效。"); return; }
+            probe.IsEnabled = false; probe.Content = "测试中…";
+            var watch = Stopwatch.StartNew();
+            try
+            {
+                using var client = new TcpClient();
+                await client.ConnectAsync(host, port).WaitAsync(TimeSpan.FromSeconds(4));
+                watch.Stop();
+                output.Items.Insert(0, $"可连接 · {host}:{port} · TCP {watch.Elapsed.TotalMilliseconds:0.0} ms");
+            }
+            catch (Exception ex) { output.Items.Insert(0, $"不可连接 · {host}:{port} · {ex.GetType().Name}: {ex.Message}"); }
+            finally { probe.IsEnabled = true; probe.Content = "测试节点 TCP 延迟"; }
+        };
+        dialog.ShowDialog();
     }
 
     // Dashboard feature cards intentionally expose only capabilities that are implemented.
