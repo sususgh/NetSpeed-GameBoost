@@ -677,4 +677,45 @@ public partial class MainWindow : Window
             ? $"{bytesPerSecond / mb:0.00} MB/s"
             : $"{bytesPerSecond / kb:0.0} KB/s";
     }
+
+    // Dashboard feature cards intentionally expose only capabilities that are implemented.
+    // VPN/CDN remain unavailable until real relay infrastructure and a tunnel backend are configured.
+    private void VpnFeatureButton_Click(object sender, RoutedEventArgs e)
+    {
+        MessageBox.Show(
+            "VPN 隧道尚未配置。当前版本不会伪造已连接状态，也不会修改系统路由。\n\n下一步需要导入并验证真实的 WireGuard 节点配置，再由用户明确授权建立隧道。",
+            "VPN 网络 · 尚未配置", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void CdnFeatureButton_Click(object sender, RoutedEventArgs e)
+    {
+        MessageBox.Show(
+            "当前没有部署可用的 CDN / 中继服务器，因此不会显示虚假的节点或加速状态。\n\n接入真实服务端后，才能进行节点探测、线路选择和流量转发。",
+            "CDN 网络 · 等待真实节点", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void DnsFeatureButton_Click(object sender, RoutedEventArgs e)
+    {
+        RunDiagnosticsButton_Click(sender, e);
+    }
+
+    private void GameFeatureButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (GameProfileCombo.SelectedItem is not GameProfile)
+        {
+            MessageBox.Show("请先在游戏档案栏添加或选择游戏，再进行线路分析。",
+                "游戏加速诊断", MessageBoxButton.OK, MessageBoxImage.Information);
+            GameProfileCombo.Focus();
+            return;
+        }
+
+        AnalyzeGameRoutesButton_Click(sender, e);
+    }
+
+    private void SecurityFeatureButton_Click(object sender, RoutedEventArgs e)
+    {
+        MessageBox.Show(
+            "当前提供的是网络诊断与连接观测，不是杀毒软件。\n\n本程序不会擅自修改 Windows 防火墙、DNS 或路由，也尚未启用 VPN Kill Switch。相关保护功能必须在真实隧道后端接入并完成回滚测试后才能启用。",
+            "安全防护 · 当前能力说明", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
 }
