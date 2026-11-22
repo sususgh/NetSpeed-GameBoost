@@ -81,14 +81,13 @@ public partial class MainWindow : Window
         try
         {
             var token = _diagnosticsCts.Token;
-            // ICMP may be filtered. DNS resolver comparison sends ordinary UDP/53 queries.
+            // DNS benchmarks use DoH only. No plaintext DNS query is sent for the test hostname.
+            // ICMP is independent of DNS and may be filtered by the network.
             var pingTask = NetworkDiagnostics.MeasurePingAsync("1.1.1.1", 10, 1200, token);
-            var systemDnsTask = NetworkDiagnostics.MeasureSystemDnsAsync("example.com", token);
-            var resolverTask = DnsResolverComparison.CompareAsync("example.com", timeoutMs: 2500, cancellationToken: token);
-            await Task.WhenAll(pingTask, systemDnsTask, resolverTask);
+            var resolverTask = DnsResolverComparison.CompareAsync("example.com", timeoutMs: 4000, cancellationToken: token);
+            await Task.WhenAll(pingTask, resolverTask);
 
             var ping = await pingTask;
-            var dns = await systemDnsTask;
             var resolverResults = await resolverTask;
             _lastDnsResolverResults = resolverResults;
 
@@ -99,14 +98,16 @@ public partial class MainWindow : Window
                 ? "抖动    -- ms"
                 : $"抖动    {ping.JitterMs:0.0} ms";
             LossText.Text = $"丢包    {ping.PacketLossPercent:0.0}%";
-            PingDetailText.Text = $"目标 {ping.Host} · {ping.Received}/{ping.Sent} 成功 · 系统 DNS {dns.DurationMs:0.0} ms";
+            PingDetailText.Text = $"目标 {ping.Host} · {ping.Received}/{ping.Sent} 成功 · DNS 测速使用 DoH/TLS";
 
             DnsComparisonList.Items.Clear();
             foreach (var result in resolverResults)
                 DnsComparisonList.Items.Add(result.ToDisplayString());
             var fastest = resolverResults.FirstOrDefault(result => result.Succeeded);
             if (fastest is not null)
-                DnsComparisonList.Items.Insert(0, $"最快响应：{fastest.Server} · {fastest.DurationMs:0.0} ms");
+                DnsComparisonList.Items.Insert(0, $"最快加密 DNS：{fastest.Provider} · {fastest.DurationMs:0.0} ms");
+            else
+                DnsComparisonList.Items.Insert(0, "没有可用的加密 DNS 响应；未降级到明文 DNS。");
 
             if (GameProfileCombo.SelectedItem is GameProfile selectedProfile)
             {
@@ -115,7 +116,7 @@ public partial class MainWindow : Window
                     AverageLatencyMs = double.IsNaN(ping.AverageLatencyMs) ? null : ping.AverageLatencyMs,
                     JitterMs = double.IsNaN(ping.JitterMs) ? null : ping.JitterMs,
                     PacketLossPercent = ping.PacketLossPercent,
-                    DnsResolutionMs = dns.DurationMs
+                    DnsResolutionMs = fastest?.DurationMs ?? double.NaN
                 });
                 await SaveProfilesAsync();
             }
