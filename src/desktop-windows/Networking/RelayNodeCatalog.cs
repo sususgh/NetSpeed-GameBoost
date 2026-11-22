@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO;
 using System.Net.Sockets;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -70,7 +71,8 @@ public sealed class RelayNodeCatalog
                 n.Host.Contains('/') || n.Host.Contains('\\'))
                 throw new InvalidDataException($"节点 {n.Id} 名称或主机名无效。");
             if (n.Port is < 1 or > 65535) throw new InvalidDataException($"节点 {n.Id} 端口无效。");
-            if (!new[] { "TCP", "UDP", "WireGuard" }.Contains(n.Transport, StringComparer.OrdinalIgnoreCase))
+            if (string.IsNullOrWhiteSpace(n.Transport) ||
+                !new[] { "TCP", "UDP", "WireGuard" }.Contains(n.Transport, StringComparer.OrdinalIgnoreCase))
                 throw new InvalidDataException($"节点 {n.Id} 传输类型无效。");
             if (n.Region?.Length > 80 || n.Notes?.Length > 500)
                 throw new InvalidDataException($"节点 {n.Id} 的区域或备注过长。");
