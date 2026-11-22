@@ -18,7 +18,8 @@
 - [x] Game process presence observation (process name only; no injection)
 - [x] Per-game local quality history for completed diagnostics
 - [ ] Optional endpoint observation with explicit permissions
-- [x] Bounded per-game local route history and trend chart\n- [ ] Exportable per-game history
+- [x] Bounded per-game local route history and trend chart
+- [ ] Exportable per-game history
 
 ## Phase 4 — acceleration providers
 - [ ] Provider abstraction and configuration format
