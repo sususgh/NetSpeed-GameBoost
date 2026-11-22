@@ -3,7 +3,7 @@ using System.Diagnostics;
 using NetSpeed.GameBoost.Desktop.Profiles;
 using System.Net.NetworkInformation;
 using System.Windows;
-using System.Windows.Threading;
+using System.Windows.Threading;\nusing System.Windows.Media;\nusing System.Windows.Shapes;
 using NetSpeed.GameBoost.Desktop.Diagnostics;
 using NetSpeed.GameBoost.Desktop.Networking;
 
@@ -20,7 +20,7 @@ public partial class MainWindow : Window
     private readonly GameProfileService _profileService = new();
     private readonly ObservableCollection<GameProfile> _profiles = [];
     private readonly DispatcherTimer _profileTimer = new() { Interval = TimeSpan.FromSeconds(2) };
-    private bool _profilesReady;
+    private bool _profilesReady;\n    private CancellationTokenSource? _routeAnalysisCts;\n    private readonly RouteHistoryService _routeHistoryService = new();
 
     public MainWindow()
     {
@@ -249,21 +249,57 @@ public partial class MainWindow : Window
             return;
         }
 
+        _routeAnalysisCts?.Cancel();
+        _routeAnalysisCts?.Dispose();
+        _routeAnalysisCts = new CancellationTokenSource();
+        var token = _routeAnalysisCts.Token;
+
         AnalyzeGameRoutesButton.IsEnabled = false;
         AnalyzeGameRoutesButton.Content = "分析中…";
-        GameRouteStatus.Text = "正在读取游戏端点并进行有限次数的 ICMP 测量…";
+        GameRouteStatus.Text = "读取游戏端点，执行 ICMP 测量与有限 TCP connect 检查…";
         GameRouteList.Items.Clear();
+        TcpProbeList.Items.Clear();
 
         try
         {
-            var endpoints = await GameConnectionMonitor.GetConnectionsForProcessAsync(profile.ProcessName);
-            var results = await GameRouteAnalyzer.AnalyzeAsync(endpoints, maxTargets: 5);
-            foreach (var result in results)
-                GameRouteList.Items.Add(result.ToDisplayString());
+            var endpoints = await GameConnectionMonitor.GetConnectionsForProcessAsync(profile.ProcessName, token);
+            var routeTask = GameRouteAnalyzer.AnalyzeAsync(endpoints, maxTargets: 5, cancellationToken: token);
+            var tcpTask = TcpEndpointProbe.ProbeObservedAsync(endpoints, maxTargets: 5, timeoutMs: 1500, cancellationToken: token);
+            await Task.WhenAll(routeTask, tcpTask);
+            var routes = await routeTask;
+            var tcpResults = await tcpTask;
 
-            GameRouteStatus.Text = results.Count == 0
-                ? "没有可测量的单播 IP 端点。可能是 UDP 对端不可见、游戏未联网或系统权限受限。"
-                : $"已测量 {results.Count} 个远端 IP，按诊断评分排序。评分不是实际加速效果保证。";
+            foreach (var result in routes)
+                GameRouteList.Items.Add(result.ToDisplayString());
+            foreach (var result in tcpResults)
+                TcpProbeList.Items.Add(result.ToDisplayString());
+
+            var timestamp = DateTime.UtcNow;
+            var historyEntries = new List<RouteHistoryEntry>();
+            foreach (var route in routes)
+            {
+                var tcp = tcpResults.FirstOrDefault(item =>
+                    item.RemoteEndpoint.StartsWith(route.RemoteAddress + ":", StringComparison.OrdinalIgnoreCase) ||
+                    item.RemoteEndpoint.StartsWith("[" + route.RemoteAddress + "]", StringComparison.OrdinalIgnoreCase));
+                historyEntries.Add(new RouteHistoryEntry(
+                    timestamp, profile.Name, route.RemoteAddress,
+                    double.IsFinite(route.AverageLatencyMs) ? route.AverageLatencyMs : null,
+                    double.IsFinite(route.JitterMs) ? route.JitterMs : null,
+                    route.PacketLossPercent, route.QualityScore,
+                    tcp?.ConnectLatencyMs, tcp?.Connected));
+            }
+
+            if (historyEntries.Count > 0)
+                await _routeHistoryService.SaveAsync(historyEntries, token);
+            await RefreshRouteHistoryAsync(profile.Name, token);
+
+            GameRouteStatus.Text = routes.Count == 0
+                ? $"未发现可测量的单播 IP；TCP 检查 {tcpResults.Count} 项。游戏可能未联网或端点不可见。"
+                : $"ICMP 测量 {routes.Count} 个 IP；TCP connect 检查 {tcpResults.Count} 个已观察 TCP 端点。仅为诊断，不会修改路由。";
+        }
+        catch (OperationCanceledException)
+        {
+            GameRouteStatus.Text = "线路分析已取消";
         }
         catch (Exception ex)
         {
@@ -275,6 +311,45 @@ public partial class MainWindow : Window
             AnalyzeGameRoutesButton.IsEnabled = true;
             AnalyzeGameRoutesButton.Content = "分析游戏线路";
         }
+    }
+
+    private async Task RefreshRouteHistoryAsync(string gameName, CancellationToken cancellationToken = default)
+    {
+        var history = await _routeHistoryService.LoadRecentAsync(gameName, 12, cancellationToken);
+        RouteHistoryList.Items.Clear();
+        foreach (var entry in history.Take(8))
+        {
+            var latency = entry.IcmpLatencyMs.HasValue ? $"{entry.IcmpLatencyMs:0.0} ms" : "ICMP --";
+            var tcp = entry.TcpConnectLatencyMs.HasValue ? $"TCP {entry.TcpConnectLatencyMs:0.0} ms" :
+                entry.TcpConnected == false ? "TCP 不通" : "TCP --";
+            RouteHistoryList.Items.Add(
+                $"{entry.TimestampUtc.ToLocalTime():HH:mm:ss}  {entry.RemoteAddress}  {latency}  {tcp}  评分 {entry.QualityScore:0.0}");
+        }
+
+        RouteHistoryChart.Children.Clear();
+        var scores = history
+            .Where(entry => double.IsFinite(entry.QualityScore))
+            .OrderBy(entry => entry.TimestampUtc)
+            .Select(entry => entry.QualityScore)
+            .ToArray();
+        if (scores.Length < 2)
+            return;
+
+        var width = Math.Max(RouteHistoryChart.ActualWidth, 280);
+        const double height = 58;
+        var line = new Polyline
+        {
+            Stroke = new SolidColorBrush(Color.FromRgb(39, 215, 242)),
+            StrokeThickness = 2,
+            Opacity = 0.95
+        };
+        for (var index = 0; index < scores.Length; index++)
+        {
+            var x = 6 + (width - 12) * index / (scores.Length - 1);
+            var y = height - 6 - Math.Clamp(scores[index], 0, 100) / 100d * (height - 12);
+            line.Points.Add(new Point(x, y));
+        }
+        RouteHistoryChart.Children.Add(line);
     }
 
     private void UpdateNetworkStats()
