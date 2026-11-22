@@ -6,6 +6,7 @@ using NetSpeed.GameBoost.Desktop.Profiles;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Threading;
 using System.Windows.Media;
 using System.Windows.Shapes;
