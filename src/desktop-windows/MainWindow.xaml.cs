@@ -331,11 +331,17 @@ public partial class MainWindow : Window
         }
 
         RouteHistoryChart.Children.Clear();
-        var scores = history
+        // A trend line must compare repeated samples for one remote IP, not mix unrelated servers.
+        var chartSeries = history
             .Where(entry => double.IsFinite(entry.QualityScore))
+            .GroupBy(entry => entry.RemoteAddress, StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(group => group.Count())
+            .ThenByDescending(group => group.Max(entry => entry.TimestampUtc))
+            .FirstOrDefault();
+        var scores = chartSeries?
             .OrderBy(entry => entry.TimestampUtc)
             .Select(entry => entry.QualityScore)
-            .ToArray();
+            .ToArray() ?? [];
         if (scores.Length < 2)
             return;
 
