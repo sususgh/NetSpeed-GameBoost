@@ -198,7 +198,8 @@
                                      ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
                         </StackPanel>
                     </Border>
-\n
+
+
                     <Border Style="{StaticResource Panel}">
                         <StackPanel>
                             <DockPanel>
