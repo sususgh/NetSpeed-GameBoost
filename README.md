@@ -46,3 +46,10 @@ dotnet publish .\src\desktop-windows\NetSpeed.GameBoost.Desktop.csproj -c Releas
 - Connection inspection is based on Windows connection-table snapshots, not packet payload capture.
 
 See [docs/architecture.md](docs/architecture.md), [docs/security.md](docs/security.md), and [docs/roadmap.md](docs/roadmap.md).
+
+
+## v1.1.0 dashboard update
+
+- Sidebar navigation is wired to working actions for the control center, game diagnostics, node TCP probing, encrypted DNS checks, Windows Security Center, and sampling settings.
+- Dashboard cards provide WireGuard configuration format validation, user-supplied node TCP reachability tests, DNS diagnostics, game route analysis, and security status.
+- VPN tunneling and CDN traffic relay are not advertised as active until a real tunnel backend and relay infrastructure are deployed.

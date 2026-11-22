@@ -67,22 +67,22 @@ jobs:
           Write-Host "Using Inno Setup compiler: $iscc"
           & $iscc "./installer/NetSpeed-GameBoost.iss"
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
-          if (!(Test-Path './artifacts/NetSpeed-GameBoost-Setup-v1.0.0.exe')) { throw 'Setup installer was not generated.' }
+          if (!(Test-Path './artifacts/NetSpeed-GameBoost-Setup-v1.1.0.exe')) { throw 'Setup installer was not generated.' }
 
       - name: Generate SHA256 checksums
         shell: pwsh
         run: |
           Get-FileHash './artifacts/NetSpeed-GameBoost-Windows-x64-Portable.zip' -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  NetSpeed-GameBoost-Windows-x64-Portable.zip" } | Out-File './artifacts/SHA256SUMS.txt' -Encoding ascii
-          Get-FileHash './artifacts/NetSpeed-GameBoost-Setup-v1.0.0.exe' -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  NetSpeed-GameBoost-Setup-v1.0.0.exe" } | Add-Content './artifacts/SHA256SUMS.txt' -Encoding ascii
+          Get-FileHash './artifacts/NetSpeed-GameBoost-Setup-v1.1.0.exe' -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  NetSpeed-GameBoost-Setup-v1.1.0.exe" } | Add-Content './artifacts/SHA256SUMS.txt' -Encoding ascii
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: NetSpeed GameBoost v1.0.0
-          tag_name: v1.0.0
+          name: NetSpeed GameBoost v1.1.0
+          tag_name: v1.1.0
           target_commitish: main
           generate_release_notes: true
           files: |
             artifacts/NetSpeed-GameBoost-Windows-x64-Portable.zip
-            artifacts/NetSpeed-GameBoost-Setup-v1.0.0.exe
+            artifacts/NetSpeed-GameBoost-Setup-v1.1.0.exe
             artifacts/SHA256SUMS.txt
