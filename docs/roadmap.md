@@ -11,7 +11,7 @@
 - [x] ICMP ping probe with timeout handling
 - [x] Average latency, consecutive-sample jitter, and packet-loss metrics
 - [x] Bounded TCP connect probes for observed game TCP endpoints
-- [ ] Exportable local diagnostics report
+- [x] Exportable local diagnostics report (CSV)
 
 ## Phase 3 — game profiles
 - [x] User-created and selected local game profiles
@@ -67,3 +67,16 @@
 - [ ] 导出诊断报告与多次采样统计
 
 注意：TCP connect 成功只说明该 TCP 端口可建立连接，不代表 UDP 游戏流量质量；游戏使用 UDP 时不会产生 TCP 测试结果。历史文件保存在 `%LOCALAPPDATA%\\NetSpeed\\GameBoost\\route-history.json`，最多保留 300 条记录，不上传云端。
+
+
+## 第七阶段：连接变化监控与诊断导出
+
+- [x] 每 3 秒读取一次所选游戏的 Windows TCP / UDP 连接表快照
+- [x] 对比相邻快照，记录新建与消失的连接端点
+- [x] 限制内存中的变化记录最多 1,000 条
+- [x] 游戏档案切换时重置变化基线，避免不同游戏数据混淆
+- [x] 导出 CSV，包含连接变化、端点信息及最近 50 条线路质量记录
+- [ ] Windows 10 / 11 实机验证采样稳定性、CSV 兼容性与长时间运行
+- [ ] 后续可增加 DNS 多解析器对比和网络中断告警
+
+说明：连接变化监控基于每 3 秒一次的 netstat 快照，短于采样间隔的瞬时连接可能漏记；它不捕获数据包内容，也不代表精确的逐连接生命周期。CSV 仅在用户选择保存位置后写入本机。
