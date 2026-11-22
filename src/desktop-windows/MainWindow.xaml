@@ -169,16 +169,32 @@
                         <StackPanel>
                             <DockPanel>
                                 <TextBlock Text="GAME CONNECTIONS" Foreground="#8CA4BD" FontSize="10"/>
-                                <Button x:Name="RefreshGameConnectionsButton" DockPanel.Dock="Right"
-                                        Content="扫描游戏连接" Click="RefreshGameConnectionsButton_Click"
-                                        Background="#12364A" Foreground="#27D7F2" BorderBrush="#1C6686"
-                                        Padding="9,5"/>
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                    <Button x:Name="MonitorGameConnectionsButton" Content="监控变化" Click="MonitorGameConnectionsButton_Click"
+                                            Background="#12364A" Foreground="#27D7F2" BorderBrush="#1C6686"
+                                            Padding="9,5" Margin="0,0,5,0"/>
+                                    <Button x:Name="RefreshGameConnectionsButton"
+                                            Content="扫描游戏连接" Click="RefreshGameConnectionsButton_Click"
+                                            Background="#12364A" Foreground="#27D7F2" BorderBrush="#1C6686"
+                                            Padding="9,5"/>
+                                </StackPanel>
                             </DockPanel>
                             <TextBlock x:Name="GameConnectionStatus" Text="选择游戏后扫描 TCP / UDP 端点"
                                        Foreground="#8CA4BD" FontSize="10" TextWrapping="Wrap" Margin="0,7,0,5"/>
                             <ListBox x:Name="GameConnectionsList" Height="125"
                                      Background="#0B1322" Foreground="#CFE8F5"
                                      BorderBrush="#20364D" FontFamily="Consolas" FontSize="10"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
+                            <DockPanel Margin="0,7,0,3">
+                                <TextBlock x:Name="ConnectionChangeStatus" Text="连接变化监控未启动"
+                                           Foreground="#8CA4BD" FontSize="9" VerticalAlignment="Center"/>
+                                <Button Content="导出诊断 CSV" DockPanel.Dock="Right" Click="ExportDiagnosticsButton_Click"
+                                        Background="#172B3B" Foreground="#AFC8D8" BorderBrush="#31516B"
+                                        Padding="8,4"/>
+                            </DockPanel>
+                            <ListBox x:Name="ConnectionChangesList" Height="85"
+                                     Background="#0B1322" Foreground="#CFE8F5"
+                                     BorderBrush="#20364D" FontFamily="Consolas" FontSize="9"
                                      ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
                         </StackPanel>
                     </Border>
