@@ -33,17 +33,24 @@ public partial class MainWindow : Window
     private bool _connectionMonitoring;
     private string? _monitoredProcessName;
     private string? _monitoredGameName;
+    private readonly NetworkHealthMonitor _networkHealthMonitor = new();
+    private readonly DispatcherTimer _networkHealthTimer = new() { Interval = TimeSpan.FromSeconds(8) };
+    private CancellationTokenSource? _networkHealthCts;
+    private bool _networkHealthPollRunning;
 
     public MainWindow()
     {
         InitializeComponent();
         _timer.Tick += (_, _) => UpdateNetworkStats();
         _connectionMonitorTimer.Tick += async (_, _) => await PollGameConnectionsAsync();
+        _networkHealthTimer.Tick += async (_, _) => await PollNetworkHealthAsync();
         Loaded += async (_, _) =>
         {
             UpdateNetworkStats();
             _timer.Start();
             await InitializeProfilesAsync();
+            _networkHealthTimer.Start();
+            await PollNetworkHealthAsync();
             _profileTimer.Tick += (_, _) => RefreshSelectedGameStatus();
             _profileTimer.Start();
         };
@@ -52,6 +59,11 @@ public partial class MainWindow : Window
             _timer.Stop();
             _profileTimer.Stop();
             _connectionMonitorTimer.Stop();
+            _networkHealthTimer.Stop();
+            _networkHealthCts?.Cancel();
+            _networkHealthCts?.Dispose();
+            _routeAnalysisCts?.Cancel();
+            _routeAnalysisCts?.Dispose();
             _diagnosticsCts?.Cancel();
             _diagnosticsCts?.Dispose();
         };
@@ -68,13 +80,15 @@ public partial class MainWindow : Window
         try
         {
             var token = _diagnosticsCts.Token;
-            // A public anycast address is used only as a diagnostic target; ICMP may be filtered.
+            // ICMP may be filtered. DNS resolver comparison sends ordinary UDP/53 queries.
             var pingTask = NetworkDiagnostics.MeasurePingAsync("1.1.1.1", 10, 1200, token);
-            var dnsTask = NetworkDiagnostics.MeasureSystemDnsAsync("example.com", token);
-            await Task.WhenAll(pingTask, dnsTask);
+            var systemDnsTask = NetworkDiagnostics.MeasureSystemDnsAsync("example.com", token);
+            var resolverTask = DnsResolverComparison.CompareAsync("example.com", timeoutMs: 2500, cancellationToken: token);
+            await Task.WhenAll(pingTask, systemDnsTask, resolverTask);
 
             var ping = await pingTask;
-            var dns = await dnsTask;
+            var dns = await systemDnsTask;
+            var resolverResults = await resolverTask;
 
             PingText.Text = double.IsNaN(ping.AverageLatencyMs)
                 ? "延迟    超时 / 无响应"
@@ -83,7 +97,14 @@ public partial class MainWindow : Window
                 ? "抖动    -- ms"
                 : $"抖动    {ping.JitterMs:0.0} ms";
             LossText.Text = $"丢包    {ping.PacketLossPercent:0.0}%";
-            PingDetailText.Text = $"目标 {ping.Host} · {ping.Received}/{ping.Sent} 成功 · DNS {dns.DurationMs:0.0} ms";
+            PingDetailText.Text = $"目标 {ping.Host} · {ping.Received}/{ping.Sent} 成功 · 系统 DNS {dns.DurationMs:0.0} ms";
+
+            DnsComparisonList.Items.Clear();
+            foreach (var result in resolverResults)
+                DnsComparisonList.Items.Add(result.ToDisplayString());
+            var fastest = resolverResults.FirstOrDefault(result => result.Succeeded);
+            if (fastest is not null)
+                DnsComparisonList.Items.Insert(0, $"最快响应：{fastest.Server} · {fastest.DurationMs:0.0} ms");
 
             if (GameProfileCombo.SelectedItem is GameProfile selectedProfile)
             {
@@ -110,6 +131,48 @@ public partial class MainWindow : Window
         {
             RunDiagnosticsButton.IsEnabled = true;
             RunDiagnosticsButton.Content = "重新检测网络质量";
+        }
+    }
+
+    private async Task PollNetworkHealthAsync()
+    {
+        if (_networkHealthPollRunning)
+            return;
+
+        _networkHealthPollRunning = true;
+        _networkHealthCts?.Cancel();
+        _networkHealthCts?.Dispose();
+        _networkHealthCts = new CancellationTokenSource();
+        var token = _networkHealthCts.Token;
+
+        try
+        {
+            var sample = await _networkHealthMonitor.SampleAsync(token);
+            NetworkHealthStatus.Text = $"{sample.Status} · {sample.Detail}";
+            NetworkHealthStatus.Foreground = sample.Status switch
+            {
+                "网络探测正常" => new SolidColorBrush(Color.FromRgb(101, 230, 194)),
+                "网络质量波动" => new SolidColorBrush(Color.FromRgb(255, 196, 92)),
+                _ => new SolidColorBrush(Color.FromRgb(255, 128, 128))
+            };
+
+            if (_networkHealthMonitor.HasStatusChanged(sample))
+            {
+                NetworkHealthEventsList.Items.Insert(0,
+                    $"{sample.TimestampUtc.ToLocalTime():HH:mm:ss}  状态变化 → {sample.Status}");
+                while (NetworkHealthEventsList.Items.Count > 30)
+                    NetworkHealthEventsList.Items.RemoveAt(NetworkHealthEventsList.Items.Count - 1);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            NetworkHealthStatus.Text = $"网络监测错误：{ex.Message}";
+            Debug.WriteLine(ex);
+        }
+        finally
+        {
+            _networkHealthPollRunning = false;
         }
     }
 
@@ -349,6 +412,17 @@ public partial class MainWindow : Window
                     Csv(entry.GameName), Csv(""), Csv(""), Csv(entry.RemoteAddress), Csv(""),
                     Csv("ICMP latency ms"), Csv(entry.IcmpLatencyMs?.ToString("0.0") ?? ""),
                     Csv($"Jitter={entry.JitterMs:0.0}; Loss={entry.PacketLossPercent:0.0}%; Score={entry.QualityScore:0.0}; TCP={entry.TcpConnectLatencyMs?.ToString("0.0") ?? "n/a"}")
+                }));
+            }
+
+            foreach (var sample in _networkHealthMonitor.History)
+            {
+                builder.AppendLine(string.Join(",", new[]
+                {
+                    Csv("NetworkHealth"), Csv(sample.TimestampUtc.ToLocalTime().ToString("O")),
+                    Csv(profile.Name), Csv("ICMP"), Csv(""), Csv("1.1.1.1"), Csv(sample.Status),
+                    Csv("AverageLatencyMs"), Csv(sample.AverageLatencyMs?.ToString("0.0") ?? ""),
+                    Csv($"PacketLoss={sample.PacketLossPercent:0.0}%; {sample.Detail}")
                 }));
             }
 
