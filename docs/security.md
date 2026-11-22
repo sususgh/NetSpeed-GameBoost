@@ -10,9 +10,12 @@
 - Use established cryptographic libraries and audited protocol implementations; do not design custom cryptography.
 
 
-## DNS diagnostic disclosure
+## Encrypted DNS diagnostics
 
-- The resolver comparison sends direct DNS A-record queries to the selected public resolvers over ordinary UDP port 53.
-- These benchmark queries are not encrypted; the queried hostname is visible to the network path and resolver.
-- The comparison is diagnostic only and never changes the operating system's configured DNS servers.
-- Users should not interpret a faster single query as proof that a resolver is universally better; results vary by network, cache state, anycast routing, and time.
+- DNS benchmark queries use DNS-over-HTTPS (DoH) over HTTPS/TLS only.
+- Built-in public endpoints: Alibaba Cloud Public DNS (`https://dns.alidns.com/dns-query`), DNSPod Public DNS (`https://doh.pub/dns-query`), Cloudflare, Google Public DNS, and Quad9.
+- Normal TLS certificate and hostname validation remains enabled; redirects are not followed automatically.
+- If an encrypted endpoint fails, the diagnostic reports failure and does not fall back to plaintext UDP/53.
+- The benchmark does not change Windows DNS configuration. Other applications may continue using the DNS settings already configured on the device.
+- Resolving the DoH provider's own hostname may require the operating system's existing bootstrap resolver. The application does not claim to eliminate all DNS bootstrap leakage.
+- The query hostname and DNS message are encrypted between the client and the DoH provider; the provider itself can still see the requested domain and the client's network address.
