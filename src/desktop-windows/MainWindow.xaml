@@ -103,13 +103,13 @@
                     <StackPanel><TextBlock Text="⚡  VPN" FontSize="17" FontWeight="Bold" Foreground="#65E6C2"/><TextBlock Text="隧道连接" FontSize="12" Margin="0,5,0,0"/><TextBlock Text="尚未配置节点" FontSize="10" Foreground="#9CB8CC" Margin="0,3,0,0"/></StackPanel>
                 </Button>
                 <Button Grid.Column="1" Style="{StaticResource FeatureCardButton}" BorderBrush="#237DBB" Background="#102947" Click="CdnFeatureButton_Click">
-                    <StackPanel><TextBlock Text="◎  CDN" FontSize="17" FontWeight="Bold" Foreground="#55C9FF"/><TextBlock Text="边缘网络" FontSize="12" Margin="0,5,0,0"/><TextBlock Text="等待真实节点" FontSize="10" Foreground="#9CB8CC" Margin="0,3,0,0"/></StackPanel>
+                    <StackPanel><TextBlock Text="◎  RELAY" FontSize="17" FontWeight="Bold" Foreground="#55C9FF"/><TextBlock Text="中继节点检测" FontSize="12" Margin="0,5,0,0"/><TextBlock Text="仅检测用户提供的 TCP 地址" FontSize="10" Foreground="#9CB8CC" Margin="0,3,0,0"/></StackPanel>
                 </Button>
                 <Button Grid.Column="2" Style="{StaticResource FeatureCardButton}" BorderBrush="#7656C9" Background="#211C42" Click="DnsFeatureButton_Click">
                     <StackPanel><TextBlock Text="▤  DNS" FontSize="17" FontWeight="Bold" Foreground="#B99AFF"/><TextBlock Text="加密解析" FontSize="12" Margin="0,5,0,0"/><TextBlock Text="DoH / TLS 诊断" FontSize="10" Foreground="#B7A9D8" Margin="0,3,0,0"/></StackPanel>
                 </Button>
                 <Button Grid.Column="3" Style="{StaticResource FeatureCardButton}" BorderBrush="#B57B39" Background="#382817" Click="GameFeatureButton_Click">
-                    <StackPanel><TextBlock Text="🎮  游戏加速" FontSize="17" FontWeight="Bold" Foreground="#FFC16B"/><TextBlock Text="游戏线路分析" FontSize="12" Margin="0,5,0,0"/><TextBlock Text="检测延迟与丢包" FontSize="10" Foreground="#D4B58D" Margin="0,3,0,0"/></StackPanel>
+                    <StackPanel><TextBlock Text="🎮  游戏网络诊断" FontSize="17" FontWeight="Bold" Foreground="#FFC16B"/><TextBlock Text="线路质量测量" FontSize="12" Margin="0,5,0,0"/><TextBlock Text="不修改系统路由" FontSize="10" Foreground="#D4B58D" Margin="0,3,0,0"/></StackPanel>
                 </Button>
                 <Button Grid.Column="4" Style="{StaticResource FeatureCardButton}" BorderBrush="#248E83" Background="#10332F" Click="SecurityFeatureButton_Click">
                     <StackPanel><TextBlock Text="⬡  安全防护" FontSize="17" FontWeight="Bold" Foreground="#5DE5C2"/><TextBlock Text="本机安全说明" FontSize="12" Margin="0,5,0,0"/><TextBlock Text="不冒充杀毒 / 防火墙" FontSize="10" Foreground="#9CCFC5" Margin="0,3,0,0"/></StackPanel>
@@ -173,7 +173,7 @@
                         </Grid.RowDefinitions>
                         <DockPanel>
                             <TextBlock Text="GLOBAL ROUTE TOPOLOGY" FontSize="11" Foreground="#8CA4BD"/>
-                            <TextBlock DockPanel.Dock="Right" Text="LIVE TELEMETRY" FontSize="10" Foreground="#27D7F2"/>
+                            <TextBlock DockPanel.Dock="Right" Text="TOPOLOGY PREVIEW" FontSize="10" Foreground="#27D7F2"/>
                         </DockPanel>
                         <Grid Grid.Row="1" Margin="0,12">
                             <Ellipse Width="300" Height="300" Stroke="#1C6686" StrokeThickness="1" Opacity="0.7"/>
