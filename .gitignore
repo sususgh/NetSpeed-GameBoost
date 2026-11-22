@@ -1,0 +1,19 @@
+# Build output
+**/bin/
+**/obj/
+.vs/
+*.user
+*.suo
+
+# Rider / VS Code
+.idea/
+.vscode/
+
+# Packages and local artifacts
+*.nupkg
+artifacts/
+publish/
+
+# Logs and local settings
+*.log
+appsettings.Local.json
