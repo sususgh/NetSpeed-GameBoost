@@ -789,37 +789,59 @@ public partial class MainWindow : Window
         dialog.ShowDialog();
     }
 
-    // Dashboard feature cards intentionally expose only capabilities that are implemented.
-    // VPN/CDN remain unavailable until real relay infrastructure and a tunnel backend are configured.
-    private void VpnFeatureButton_Click(object sender, RoutedEventArgs e)
+    // WireGuard uses the official Windows CLI and signed driver; no custom tunnel crypto is implemented.
+    private async void VpnFeatureButton_Click(object sender, RoutedEventArgs e)
     {
+        var manager = new WireGuardTunnelManager();
+        var backend = manager.Detect();
+        if (!backend.IsInstalled)
+        {
+            MessageBox.Show(
+                "尚未检测到官方 WireGuard for Windows。VPN 隧道功能需要官方客户端及其签名驱动。\n\n请先从 wireguard.com 安装官方版本，然后重新打开此入口。当前不会显示为已连接。",
+                "VPN 后端未安装", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
         var dialog = new OpenFileDialog
         {
-            Title = "选择 WireGuard 配置文件（仅验证，不会连接）",
-            Filter = "WireGuard 配置 (*.conf)|*.conf|所有文件 (*.*)|*.*",
+            Title = "选择可信 VPN 服务商提供的 WireGuard 配置",
+            Filter = "WireGuard 配置 (*.conf)|*.conf",
             CheckFileExists = true
         };
         if (dialog.ShowDialog(this) != true) return;
 
+        var validation = manager.ValidateConfig(dialog.FileName);
+        if (!validation.IsValid)
+        {
+            MessageBox.Show(string.Join("\n", validation.Errors), "WireGuard 配置检查失败",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var warningText = validation.Warnings.Length == 0
+            ? ""
+            : "\n\n提醒：\n" + string.Join("\n", validation.Warnings);
+        var confirm = MessageBox.Show(
+            $"配置结构检查通过，隧道名称：{validation.InterfaceName}。{warningText}\n\n接下来将调用官方 WireGuard 安装隧道服务，并请求 Windows 管理员权限。是否继续？",
+            "安装 VPN 隧道", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (confirm != MessageBoxResult.Yes) return;
+
         try
         {
-            var config = File.ReadAllText(dialog.FileName);
-            var hasInterface = config.Contains("[Interface]", StringComparison.OrdinalIgnoreCase);
-            var hasPeer = config.Contains("[Peer]", StringComparison.OrdinalIgnoreCase);
-            var hasPrivateKey = config.Split('\n').Any(line => line.TrimStart().StartsWith("PrivateKey", StringComparison.OrdinalIgnoreCase));
-            var hasPublicKey = config.Split('\n').Any(line => line.TrimStart().StartsWith("PublicKey", StringComparison.OrdinalIgnoreCase));
-            var hasEndpoint = config.Split('\n').Any(line => line.TrimStart().StartsWith("Endpoint", StringComparison.OrdinalIgnoreCase));
-            var valid = hasInterface && hasPeer && hasPrivateKey && hasPublicKey && hasEndpoint;
+            var result = await manager.InstallTunnelAsync(dialog.FileName);
             MessageBox.Show(
-                valid
-                    ? "配置文件结构检查通过：已找到 Interface、Peer、PrivateKey、PublicKey 和 Endpoint。\n\n注意：本版本尚未集成 WireGuard 隧道驱动/服务，因此这里只完成本地格式检查，不会建立 VPN 连接，也不会上传或保存你的密钥。"
-                    : "配置文件不完整。需要包含 [Interface]、PrivateKey、[Peer]、PublicKey 和 Endpoint。\n\n文件内容不会上传。",
-                "WireGuard 配置检查", MessageBoxButton.OK,
-                valid ? MessageBoxImage.Information : MessageBoxImage.Warning);
+                $"已向 WireGuard 提交隧道服务安装请求。当前服务状态：{result.State}。\n\n注意：服务存在不等于握手成功或所有游戏流量已进入隧道。后续还需验证最新握手、路由、DNS 和 IPv6 泄漏。",
+                "WireGuard 隧道服务", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (OperationCanceledException)
+        {
+            MessageBox.Show("你取消了管理员权限请求，未安装隧道服务。", "操作已取消",
+                MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"无法读取配置文件：{ex.Message}", "配置检查失败", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"无法安装 WireGuard 隧道服务：{ex.Message}", "VPN 安装失败",
+                MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
