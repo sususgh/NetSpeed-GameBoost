@@ -10,7 +10,7 @@
 - [x] System-configured DNS resolution timing with timeout handling
 - [x] ICMP ping probe with timeout handling
 - [x] Average latency, consecutive-sample jitter, and packet-loss metrics
-- [ ] TCP endpoint probes
+- [x] Bounded TCP connect probes for observed game TCP endpoints
 - [ ] Exportable local diagnostics report
 
 ## Phase 3 — game profiles
@@ -18,7 +18,7 @@
 - [x] Game process presence observation (process name only; no injection)
 - [x] Per-game local quality history for completed diagnostics
 - [ ] Optional endpoint observation with explicit permissions
-- [ ] Per-game historical charts and export
+- [x] Bounded per-game local route history and trend chart\n- [ ] Exportable per-game history
 
 ## Phase 4 — acceleration providers
 - [ ] Provider abstraction and configuration format
@@ -50,8 +50,20 @@
 - [x] 对最多 5 个目标进行有限次数 ICMP 测量
 - [x] 计算延迟、抖动、丢包和启发式质量评分
 - [x] 在桌面界面展示排序结果
-- [ ] 增加 TCP connect 测量作为 ICMP 受限时的辅助指标
-- [ ] 保存线路历史并绘制趋势图
+- [x] 增加 TCP connect 测量作为 ICMP 的辅助指标（仅观察到的 TCP 端点）
+- [x] 保存本地线路历史并绘制最近质量趋势图
 - [ ] Windows 10 / 11 编译与真实游戏联机验证
 
 评分说明：当前分数是便于比较的启发式诊断值，不代表游戏实际帧率或必然的线路改善；ICMP 无响应不能直接判定服务器不可用。此阶段不修改路由、不自动切换线路。
+
+
+## 第六阶段：TCP 连通性与线路历史
+
+- [x] 仅对游戏连接表中观察到的 TCP 远端 IP:端口执行有限 connect 测试
+- [x] 每个 TCP 目标设置超时；不发送应用层数据、不扫描任意端口
+- [x] 将 ICMP 与 TCP 测量结果写入本机有界历史文件
+- [x] 桌面端显示 TCP connect 结果、最近历史记录与真实评分趋势折线
+- [ ] Windows 10 / 11 编译、UI 布局与真实游戏环境验证
+- [ ] 导出诊断报告与多次采样统计
+
+注意：TCP connect 成功只说明该 TCP 端口可建立连接，不代表 UDP 游戏流量质量；游戏使用 UDP 时不会产生 TCP 测试结果。历史文件保存在 `%LOCALAPPDATA%\\NetSpeed\\GameBoost\\route-history.json`，最多保留 300 条记录，不上传云端。
