@@ -1,55 +1,50 @@
-# NetSpeed-GameBoost
+# NetSpeed GameBoost
 
-A Windows desktop application for game-network monitoring and diagnostics, built with .NET 8 and WPF.
+NetSpeed GameBoost is a Windows 10/11 x64 desktop application built with .NET 8 and WPF.
 
-> **Current capability:** local network throughput monitoring, game process profiles, observed TCP/UDP endpoint monitoring, route-quality diagnostics, encrypted DNS-over-HTTPS comparisons, network-health checks, and local CSV export.
->
-> **Important:** this is currently a diagnostics/monitoring application. It does not yet create a VPN tunnel, relay network, traffic interception layer, or guarantee lower game latency. The topology illustration is not a live global node map.
+## Current verified product scope
+
+The current application provides:
+- Live local network upload/download rate monitoring.
+- User-managed game process profiles and process-presence observation.
+- TCP/UDP endpoint observation through the Windows connection table (not packet payload capture).
+- Bounded ICMP route diagnostics with latency, jitter, packet-loss measurements and a heuristic quality score.
+- TCP connect checks for observed endpoints and user-entered relay endpoints.
+- DNS-over-HTTPS comparisons using TLS certificate validation; no fallback to plaintext DNS.
+- Local network-health monitoring, route history and CSV diagnostic export.
+
+The WireGuard integration is an optional client-side adapter for the official WireGuard for Windows application. It imports a provider-supplied configuration and asks the official CLI to install the tunnel service. It does not provide a VPN subscription, server, relay fleet, kill switch, or proof that game traffic is routed through the tunnel. The user must verify tunnel handshake, routes, DNS and IPv6 behavior with their VPN provider.
+
+The relay catalogue currently stores user-supplied endpoints and performs TCP reachability checks only. It is not a deployed CDN or UDP game relay. No fake public nodes are bundled, and TCP reachability is not presented as game acceleration.
 
 ## Download
 
-Open the repository [Releases](https://github.com/sususgh/NetSpeed-GameBoost/releases) page and download one of the Windows x64 assets:
+Download the latest verified Windows x64 installer and portable ZIP from [GitHub Releases](https://github.com/sususgh/NetSpeed-GameBoost/releases). Each release includes SHA-256 checksums. The release workflow only publishes a GitHub Release when a version tag such as `v1.2.0` is pushed and the Windows build, self-contained publish, installer creation and package checks all succeed.
 
-- **NetSpeed-GameBoost-Setup-v1.0.0.exe** — standard installer; installs the app and creates Start Menu and optional desktop shortcuts.
-- **NetSpeed-GameBoost-Windows-x64-Portable.zip** — portable build; extract it and run \`NetSpeed.GameBoost.Desktop.exe\`.
-- **SHA256SUMS.txt** — SHA-256 checksums for verifying downloads.
-
-The release workflow runs when a \`v*\` tag is pushed or manually from GitHub Actions. It builds the self-contained application on a Windows GitHub Actions runner, packages the installer with Inno Setup, and attaches both packages to the GitHub Release. Release assets are only available after that workflow finishes successfully.
+Pull requests and normal branch builds produce downloadable CI artifacts, not public releases.
 
 ## Requirements
 
-- End-user package: Windows 10/11 x64. No separate .NET installation is intended.
-- Developer build: .NET 8 SDK and the .NET desktop/WPF workload on Windows.
+- End users: Windows 10/11 x64. The installer is self-contained and is intended not to require a separately installed .NET runtime.
+- Developers: .NET 8 SDK and Windows desktop/WPF build support.
 
 ## Developer build
 
-\`\`\`powershell
+```powershell
 dotnet restore .\src\desktop-windows\NetSpeed.GameBoost.Desktop.csproj
 dotnet build .\src\desktop-windows\NetSpeed.GameBoost.Desktop.csproj -c Release
 dotnet run --project .\src\desktop-windows\NetSpeed.GameBoost.Desktop.csproj
-\`\`\`
+```
 
-## Publish a portable Windows x64 package
+## Privacy and security
 
-\`\`\`powershell
-dotnet publish .\src\desktop-windows\NetSpeed.GameBoost.Desktop.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o .\publish\win-x64
-\`\`\`
-
-## Privacy and safety
-
-- Network measurements are performed locally; diagnostic data is not uploaded by the application.
-- DoH comparisons use HTTPS/TLS with normal certificate and hostname validation. Failed encrypted queries do not fall back to plaintext DNS.
-- DoH comparison does not change Windows system DNS settings. The operating system may use its current DNS configuration to resolve a DoH provider hostname initially.
+- Network measurements and profile history are stored locally; no telemetry upload is implemented.
+- DoH queries use HTTPS/TLS with normal certificate and hostname validation.
+- Failed encrypted DNS checks do not downgrade to plaintext DNS.
+- The application does not silently change Windows DNS, routes, proxy or firewall settings.
+- Connection inspection uses Windows connection-table snapshots; short-lived connections may be missed.
 - No custom root certificate is installed and TLS validation is not disabled.
-- No traffic is redirected in the current application.
-- No administrator privileges are requested by the current manifest.
-- Connection inspection is based on Windows connection-table snapshots, not packet payload capture.
+- The application is not antivirus software and does not claim to provide a VPN kill switch.
+- Do not import WireGuard configuration files from untrusted sources; they contain sensitive private-key material.
 
-See [docs/architecture.md](docs/architecture.md), [docs/security.md](docs/security.md), and [docs/roadmap.md](docs/roadmap.md).
-
-
-## v1.1.0 dashboard update
-
-- Sidebar navigation is wired to working actions for the control center, game diagnostics, node TCP probing, encrypted DNS checks, Windows Security Center, and sampling settings.
-- Dashboard cards provide WireGuard configuration format validation, user-supplied node TCP reachability tests, DNS diagnostics, game route analysis, and security status.
-- VPN tunneling and CDN traffic relay are not advertised as active until a real tunnel backend and relay infrastructure are deployed.
+See `docs/security.md`, `docs/architecture.md` and `docs/vpn-relay-development.md` for implementation limits and security requirements.
