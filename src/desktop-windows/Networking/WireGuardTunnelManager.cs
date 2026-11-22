@@ -57,7 +57,7 @@ public sealed class WireGuardTunnelManager
             await process.WaitForExitAsync(timeout.Token);
             var output = (await stdout) + Environment.NewLine + (await stderr);
             if (process.ExitCode != 0) return [];
-            return Regex.Matches(output, @"SERVICE_NAME:\\s*WireGuardTunnel\\$(?<name>[A-Za-z0-9_=+.-]{1,15})",
+            return Regex.Matches(output, @"SERVICE_NAME:\s*WireGuardTunnel\$(?<name>[A-Za-z0-9_=+.-]{1,15})",
                     RegexOptions.IgnoreCase)
                 .Select(match => match.Groups["name"].Value)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
