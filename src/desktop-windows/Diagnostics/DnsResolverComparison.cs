@@ -1,7 +1,7 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Net;
-using System.Net.Sockets;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Security.Cryptography;
 
@@ -31,21 +31,25 @@ public static class DnsResolverComparison
 {
     private sealed record ResolverEndpoint(string Provider, string Address, string Region);
 
+    private static readonly HttpClient DoHClient = new(new SocketsHttpHandler
+    {
+        PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+        ConnectTimeout = TimeSpan.FromSeconds(4),
+        AllowAutoRedirect = false
+    })
+    {
+        Timeout = Timeout.InfiniteTimeSpan
+    };
+
     // Public recursive DNS services. Mainland entries are listed first; addresses are not
     // assumed to be reachable from every ISP or region and are measured on the user's network.
     private static readonly ResolverEndpoint[] DefaultResolvers =
     [
-        new("阿里云", "223.5.5.5", "中国大陆"),
-        new("阿里云", "223.6.6.6", "中国大陆"),
-        new("DNSPod", "119.29.29.29", "中国大陆"),
-        new("DNSPod", "119.28.28.28", "中国大陆"),
-        new("114DNS", "114.114.114.114", "中国大陆"),
-        new("114DNS", "114.114.115.115", "中国大陆"),
-        new("火山引擎", "180.184.1.1", "中国大陆"),
-        new("火山引擎", "180.184.2.2", "中国大陆"),
-        new("Cloudflare", "1.1.1.1", "国际"),
-        new("Google", "8.8.8.8", "国际"),
-        new("Quad9", "9.9.9.9", "国际")
+        new("阿里云 DoH", "https://dns.alidns.com/dns-query", "中国大陆"),
+        new("DNSPod DoH", "https://doh.pub/dns-query", "中国大陆"),
+        new("Cloudflare DoH", "https://cloudflare-dns.com/dns-query", "国际"),
+        new("Google DoH", "https://dns.google/dns-query", "国际"),
+        new("Quad9 DoH", "https://dns.quad9.net/dns-query", "国际")
     ];
 
     public static async Task<IReadOnlyList<DnsServerResult>> CompareAsync(
@@ -63,14 +67,14 @@ public static class DnsResolverComparison
             ? DefaultResolvers
             : resolverAddresses
                 .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Select(value => new ResolverEndpoint("自定义", value, "自定义"))
+                .Select(value => new ResolverEndpoint("自定义 DoH", value, "自定义"))
                 .ToArray();
 
         var resolvers = selected
             .Select(endpoint => (Endpoint: endpoint,
-                Address: IPAddress.TryParse(endpoint.Address, out var address) ? address : null))
-            .Where(item => item.Address is not null &&
-                item.Address.AddressFamily == AddressFamily.InterNetwork)
+                Uri: Uri.TryCreate(endpoint.Address, UriKind.Absolute, out var uri) &&
+                     uri.Scheme == Uri.UriSchemeHttps ? uri : null))
+            .Where(item => item.Uri is not null)
             .Take(16)
             .ToArray();
 
@@ -80,9 +84,9 @@ public static class DnsResolverComparison
             var timer = Stopwatch.StartNew();
             try
             {
-                var addresses = await QueryAAsync(hostname, item.Address!, timeoutMs, cancellationToken);
+                var addresses = await QueryAAsync(hostname, item.Uri!, timeoutMs, cancellationToken);
                 timer.Stop();
-                return new DnsServerResult(item.Endpoint.Provider, item.Address!.ToString(),
+                return new DnsServerResult(item.Endpoint.Provider, item.Uri!.ToString(),
                     item.Endpoint.Region, hostname, timer.Elapsed.TotalMilliseconds, addresses, null);
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -92,7 +96,7 @@ public static class DnsResolverComparison
                     item.Endpoint.Region, hostname, timer.Elapsed.TotalMilliseconds, [],
                     $"超时（{timeoutMs} ms）");
             }
-            catch (Exception ex) when (ex is SocketException or IOException or FormatException or InvalidDataException)
+            catch (Exception ex) when (ex is HttpRequestException or IOException or FormatException or InvalidDataException or TaskCanceledException)
             {
                 timer.Stop();
                 return new DnsServerResult(item.Endpoint.Provider, item.Address!.ToString(),
@@ -107,18 +111,28 @@ public static class DnsResolverComparison
     }
 
     private static async Task<IReadOnlyList<IPAddress>> QueryAAsync(
-        string hostname, IPAddress resolver, int timeoutMs, CancellationToken cancellationToken)
+        string hostname, Uri endpoint, int timeoutMs, CancellationToken cancellationToken)
     {
         var query = BuildQuery(hostname, out var transactionId);
-        using var client = new UdpClient(AddressFamily.InterNetwork);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(timeoutMs);
 
-        await client.SendAsync(query, new IPEndPoint(resolver, 53), timeout.Token);
-        var response = await client.ReceiveAsync(timeout.Token);
-        if (!response.RemoteEndPoint.Address.Equals(resolver) || response.RemoteEndPoint.Port != 53)
-            throw new InvalidDataException("DNS 响应来源地址不匹配");
-        return ParseResponse(response.Buffer, transactionId);
+        using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/dns-message"));
+        request.Content = new ByteArrayContent(query);
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/dns-message");
+
+        // HTTPS enforces TLS certificate and hostname validation through the platform defaults.
+        // No plaintext DNS fallback is attempted if the encrypted request fails.
+        using var response = await DoHClient.SendAsync(
+            request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+        response.EnsureSuccessStatusCode();
+
+        if (response.Content.Headers.ContentType?.MediaType != "application/dns-message")
+            throw new InvalidDataException("DoH 响应 Content-Type 无效");
+
+        var packet = await response.Content.ReadAsByteArrayAsync(timeout.Token);
+        return ParseResponse(packet, transactionId);
     }
 
     private static byte[] BuildQuery(string hostname, out ushort transactionId)
