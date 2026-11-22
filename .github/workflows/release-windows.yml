@@ -1,0 +1,74 @@
+name: Build and Release Windows App
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-release-\${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    name: Build portable ZIP and Windows installer
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore ./src/desktop-windows/NetSpeed.GameBoost.Desktop.csproj --runtime win-x64
+
+      - name: Publish self-contained Windows x64 app
+        run: dotnet publish ./src/desktop-windows/NetSpeed.GameBoost.Desktop.csproj --configuration Release --runtime win-x64 --self-contained true --no-restore -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false --output ./artifacts/publish/win-x64
+
+      - name: Verify published executable
+        shell: pwsh
+        run: |
+          $exe = './artifacts/publish/win-x64/NetSpeed.GameBoost.Desktop.exe'
+          if (!(Test-Path $exe)) { throw 'Published executable was not found.' }
+          if ((Get-Item $exe).Length -lt 1MB) { throw 'Published executable is unexpectedly small.' }
+
+      - name: Create portable ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive -Path './artifacts/publish/win-x64/*' -DestinationPath './artifacts/NetSpeed-GameBoost-Windows-x64-Portable.zip' -Force
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $iscc = "\${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) { throw "Inno Setup compiler not found: $iscc" }
+          & $iscc "./installer/NetSpeed-GameBoost.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
+          if (!(Test-Path './artifacts/NetSpeed-GameBoost-Setup-v1.0.0.exe')) { throw 'Setup installer was not generated.' }
+
+      - name: Generate SHA256 checksums
+        shell: pwsh
+        run: |
+          Get-FileHash './artifacts/NetSpeed-GameBoost-Windows-x64-Portable.zip' -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  NetSpeed-GameBoost-Windows-x64-Portable.zip" } | Out-File './artifacts/SHA256SUMS.txt' -Encoding ascii
+          Get-FileHash './artifacts/NetSpeed-GameBoost-Setup-v1.0.0.exe' -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  NetSpeed-GameBoost-Setup-v1.0.0.exe" } | Add-Content './artifacts/SHA256SUMS.txt' -Encoding ascii
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: NetSpeed GameBoost \${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            artifacts/NetSpeed-GameBoost-Windows-x64-Portable.zip
+            artifacts/NetSpeed-GameBoost-Setup-v1.0.0.exe
+            artifacts/SHA256SUMS.txt
