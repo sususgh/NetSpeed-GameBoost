@@ -108,8 +108,8 @@ jobs:
           if (!(Test-Path $installedExe)) { throw "Installed application was not found at $installedExe" }
           $uninstaller = Join-Path $installDir "unins000.exe"
           if (!(Test-Path $uninstaller)) { throw 'Uninstaller was not created.' }
-          & $uninstaller /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
-          if ($LASTEXITCODE -ne 0) { throw "Uninstaller exited with code $LASTEXITCODE" }
+          $uninstallProcess = Start-Process -FilePath $uninstaller -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -Wait -PassThru
+          if ($uninstallProcess.ExitCode -ne 0) { throw "Uninstaller exited with code $($uninstallProcess.ExitCode)" }
           if (Test-Path $installedExe) { throw 'Application executable still exists after uninstall.' }
           Write-Host 'Silent install and uninstall smoke test passed.'
 
