@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.IO;
+using Path = System.IO.Path;
 using System.Diagnostics;
 using NetSpeed.GameBoost.Desktop.Profiles;
 using System.Net.NetworkInformation;
