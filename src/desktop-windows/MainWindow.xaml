@@ -164,7 +164,25 @@
                                     Padding="10,8" Margin="0,12,0,0"/>
                         </StackPanel>
                     </Border>
+
                     <Border Style="{StaticResource Panel}">
+                        <StackPanel>
+                            <DockPanel>
+                                <TextBlock Text="GAME CONNECTIONS" Foreground="#8CA4BD" FontSize="10"/>
+                                <Button x:Name="RefreshGameConnectionsButton" DockPanel.Dock="Right"
+                                        Content="扫描游戏连接" Click="RefreshGameConnectionsButton_Click"
+                                        Background="#12364A" Foreground="#27D7F2" BorderBrush="#1C6686"
+                                        Padding="9,5"/>
+                            </DockPanel>
+                            <TextBlock x:Name="GameConnectionStatus" Text="选择游戏后扫描 TCP / UDP 端点"
+                                       Foreground="#8CA4BD" FontSize="10" TextWrapping="Wrap" Margin="0,7,0,5"/>
+                            <ListBox x:Name="GameConnectionsList" Height="125"
+                                     Background="#0B1322" Foreground="#CFE8F5"
+                                     BorderBrush="#20364D" FontFamily="Consolas" FontSize="10"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
+                        </StackPanel>
+                    </Border>
+\n                    <Border Style="{StaticResource Panel}">
                         <StackPanel>
                             <TextBlock Text="SECURITY" Foreground="#8CA4BD" FontSize="10"/>
                             <TextBlock Text="基础安全状态：待检测" Foreground="#F3C969" FontSize="14" Margin="0,8,0,0"/>
