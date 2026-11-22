@@ -30,3 +30,15 @@
 - [ ] Authorized relay discovery and health checks
 - [ ] Opt-in LAN sharing with device authentication
 - [ ] Optional content cache for eligible, authorized content only
+
+
+## 第四阶段：游戏网络连接分析
+
+- [x] 通过 Windows netstat 连接表读取 TCP / UDP 端点
+- [x] 按游戏进程名关联 PID
+- [x] 在桌面端增加手动扫描与端点列表
+- [ ] 验证不同 Windows 权限级别下的可见性
+- [ ] 增加连接变化历史与远端地址归属信息
+- [ ] 在 Windows 10 / 11 实机编译和运行测试
+
+说明：netstat 输出是系统连接表快照，不是逐包捕获；UDP 不具有 TCP 式连接状态。远端 IP 的地理位置或运营商归属尚未查询。
