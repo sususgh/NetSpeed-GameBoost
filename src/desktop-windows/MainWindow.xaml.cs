@@ -1,4 +1,6 @@
+using System.Collections.ObjectModel;
 using System.Diagnostics;
+using NetSpeed.GameBoost.Desktop.Profiles;
 using System.Net.NetworkInformation;
 using System.Windows;
 using System.Windows.Threading;
@@ -14,19 +16,27 @@ public partial class MainWindow : Window
     private DateTime _lastSampleUtc;
     private bool _hasSample;
     private CancellationTokenSource? _diagnosticsCts;
+    private readonly GameProfileService _profileService = new();
+    private readonly ObservableCollection<GameProfile> _profiles = [];
+    private readonly DispatcherTimer _profileTimer = new() { Interval = TimeSpan.FromSeconds(2) };
+    private bool _profilesReady;
 
     public MainWindow()
     {
         InitializeComponent();
         _timer.Tick += (_, _) => UpdateNetworkStats();
-        Loaded += (_, _) =>
+        Loaded += async (_, _) =>
         {
             UpdateNetworkStats();
             _timer.Start();
+            await InitializeProfilesAsync();
+            _profileTimer.Tick += (_, _) => RefreshSelectedGameStatus();
+            _profileTimer.Start();
         };
         Closed += (_, _) =>
         {
             _timer.Stop();
+            _profileTimer.Stop();
             _diagnosticsCts?.Cancel();
             _diagnosticsCts?.Dispose();
         };
@@ -59,6 +69,18 @@ public partial class MainWindow : Window
                 : $"抖动    {ping.JitterMs:0.0} ms";
             LossText.Text = $"丢包    {ping.PacketLossPercent:0.0}%";
             PingDetailText.Text = $"目标 {ping.Host} · {ping.Received}/{ping.Sent} 成功 · DNS {dns.DurationMs:0.0} ms";
+
+            if (GameProfileCombo.SelectedItem is GameProfile selectedProfile)
+            {
+                GameProfileService.AddSample(selectedProfile, new GameQualitySample
+                {
+                    AverageLatencyMs = double.IsNaN(ping.AverageLatencyMs) ? null : ping.AverageLatencyMs,
+                    JitterMs = double.IsNaN(ping.JitterMs) ? null : ping.JitterMs,
+                    PacketLossPercent = ping.PacketLossPercent,
+                    DnsResolutionMs = dns.DurationMs
+                });
+                await SaveProfilesAsync();
+            }
         }
         catch (OperationCanceledException)
         {
@@ -73,6 +95,111 @@ public partial class MainWindow : Window
         {
             RunDiagnosticsButton.IsEnabled = true;
             RunDiagnosticsButton.Content = "重新检测网络质量";
+        }
+    }
+
+    private async Task InitializeProfilesAsync()
+    {
+        try
+        {
+            var loaded = await _profileService.LoadAsync();
+            _profiles.Clear();
+            foreach (var profile in loaded)
+                _profiles.Add(profile);
+
+            GameProfileCombo.ItemsSource = _profiles;
+            if (_profiles.Count > 0)
+                GameProfileCombo.SelectedIndex = 0;
+            _profilesReady = true;
+            RefreshSelectedGameStatus();
+        }
+        catch (Exception ex)
+        {
+            GameProcessStatus.Text = $"档案加载失败：{ex.Message}";
+            Debug.WriteLine(ex);
+        }
+    }
+
+    private async void AddGameProfileButton_Click(object sender, RoutedEventArgs e)
+    {
+        var name = ProfileNameInput.Text.Trim();
+        var processName = ProcessNameInput.Text.Trim();
+        if (string.IsNullOrWhiteSpace(name) || !GameProfileService.IsValidProcessName(processName))
+        {
+            MessageBox.Show("请填写游戏名称和有效的 EXE 进程名，例如：game.exe。", "无法添加档案",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        if (_profiles.Any(p => string.Equals(p.ProcessName, processName, StringComparison.OrdinalIgnoreCase)))
+        {
+            MessageBox.Show("这个进程名已经存在于游戏档案中。", "重复档案",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var profile = new GameProfile { Name = name, ProcessName = processName };
+        _profiles.Add(profile);
+        GameProfileCombo.SelectedItem = profile;
+        ProfileNameInput.Clear();
+        ProcessNameInput.Clear();
+        await SaveProfilesAsync();
+        RefreshSelectedGameStatus();
+    }
+
+    private async void DeleteGameProfileButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (GameProfileCombo.SelectedItem is not GameProfile profile)
+            return;
+
+        var answer = MessageBox.Show($"确定删除“{profile.Name}”档案及其本地质量历史吗？",
+            "删除游戏档案", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (answer != MessageBoxResult.Yes)
+            return;
+
+        _profiles.Remove(profile);
+        if (_profiles.Count > 0)
+            GameProfileCombo.SelectedIndex = 0;
+        await SaveProfilesAsync();
+        RefreshSelectedGameStatus();
+    }
+
+    private void GameProfileCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (_profilesReady)
+            RefreshSelectedGameStatus();
+    }
+
+    private void RefreshSelectedGameStatus()
+    {
+        if (GameProfileCombo.SelectedItem is not GameProfile profile)
+        {
+            GameProcessStatus.Text = "尚未选择游戏档案";
+            GameProcessStatus.Foreground = System.Windows.Media.Brushes.LightGray;
+            return;
+        }
+
+        var running = GameProfileService.IsRunning(profile.ProcessName);
+        GameProcessStatus.Text = running
+            ? $"● {profile.Name} 正在运行 · 已记录 {profile.History.Count} 条样本"
+            : $"○ {profile.Name} 未运行 · 已记录 {profile.History.Count} 条样本";
+        GameProcessStatus.Foreground = running
+            ? new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromRgb(101, 230, 194))
+            : new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromRgb(243, 201, 105));
+    }
+
+    private async Task SaveProfilesAsync()
+    {
+        try
+        {
+            await _profileService.SaveAsync(_profiles.ToList());
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"无法保存游戏档案：{ex.Message}", "本地保存失败",
+                MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
