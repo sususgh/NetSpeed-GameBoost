@@ -14,9 +14,11 @@
 - [ ] Exportable local diagnostics report
 
 ## Phase 3 — game profiles
-- [ ] User-selected game profiles
-- [ ] Process and endpoint observation with explicit permissions
-- [ ] Per-game quality history
+- [x] User-created and selected local game profiles
+- [x] Game process presence observation (process name only; no injection)
+- [x] Per-game local quality history for completed diagnostics
+- [ ] Optional endpoint observation with explicit permissions
+- [ ] Per-game historical charts and export
 
 ## Phase 4 — acceleration providers
 - [ ] Provider abstraction and configuration format
