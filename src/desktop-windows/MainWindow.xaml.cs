@@ -32,6 +32,7 @@ public partial class MainWindow : Window
     private bool _connectionPollRunning;
     private bool _connectionMonitoring;
     private string? _monitoredProcessName;
+    private string? _monitoredGameName;
 
     public MainWindow()
     {
@@ -181,7 +182,18 @@ public partial class MainWindow : Window
     private void GameProfileCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
         if (_profilesReady)
+        {
+            if (GameProfileCombo.SelectedItem is GameProfile selected &&
+                !string.Equals(_monitoredGameName, selected.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                _connectionChangeTracker.Reset();
+                _monitoredGameName = selected.Name;
+                _monitoredProcessName = selected.ProcessName;
+                ConnectionChangesList.Items.Clear();
+                ConnectionChangeStatus.Text = "已切换游戏档案；连接变化记录已重置";
+            }
             RefreshSelectedGameStatus();
+        }
     }
 
     private void RefreshSelectedGameStatus()
@@ -230,6 +242,7 @@ public partial class MainWindow : Window
 
             _connectionChangeTracker.Reset();
             _monitoredProcessName = profile.ProcessName;
+            _monitoredGameName = profile.Name;
             _connectionMonitoring = true;
             MonitorGameConnectionsButton.Content = "停止监控";
             ConnectionChangeStatus.Text = "正在建立基线快照（每 3 秒检查一次）…";
@@ -261,10 +274,12 @@ public partial class MainWindow : Window
         _connectionPollRunning = true;
         try
         {
-            if (!string.Equals(_monitoredProcessName, profile.ProcessName, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(_monitoredProcessName, profile.ProcessName, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(_monitoredGameName, profile.Name, StringComparison.OrdinalIgnoreCase))
             {
                 _connectionChangeTracker.Reset();
                 _monitoredProcessName = profile.ProcessName;
+                _monitoredGameName = profile.Name;
                 ConnectionChangesList.Items.Clear();
             }
 
