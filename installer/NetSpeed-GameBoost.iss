@@ -11,7 +11,7 @@ AppPublisher={#AppPublisher}
 DefaultDirName={autopf}\NetSpeed GameBoost
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
-OutputDir=..\..\artifacts
+OutputDir=..\artifacts
 OutputBaseFilename=NetSpeed-GameBoost-Setup-v{#AppVersion}
 Compression=lzma2
 SolidCompression=yes
@@ -23,7 +23,7 @@ UninstallDisplayIcon={app}\{#AppExeName}
 SetupLogging=yes
 
 [Files]
-Source: "..\..\artifacts\publish\win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\artifacts\publish\win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExeName}"
