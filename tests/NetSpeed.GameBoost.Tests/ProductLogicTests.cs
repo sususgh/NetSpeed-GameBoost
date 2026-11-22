@@ -10,7 +10,7 @@ public sealed class ProductLogicTests
     [Fact]
     public void WireGuardConfig_ValidStructure_IsAccepted()
     {
-        var path = Path.Combine(Path.GetTempPath(), $"netspeed-{Guid.NewGuid():N}.conf");
+        var path = Path.ChangeExtension(Path.Combine(Path.GetTempPath(), Path.GetRandomFileName()), ".conf");
         try
         {
             File.WriteAllText(path, """
@@ -26,7 +26,7 @@ public sealed class ProductLogicTests
 
             var result = new WireGuardTunnelManager().ValidateConfig(path);
 
-            Assert.True(result.IsValid);
+            Assert.True(result.IsValid, string.Join("; ", result.Errors));
             Assert.Empty(result.Errors);
         }
         finally
@@ -38,7 +38,7 @@ public sealed class ProductLogicTests
     [Fact]
     public void WireGuardConfig_MissingEndpoint_IsRejected()
     {
-        var path = Path.Combine(Path.GetTempPath(), $"netspeed-{Guid.NewGuid():N}.conf");
+        var path = Path.ChangeExtension(Path.Combine(Path.GetTempPath(), Path.GetRandomFileName()), ".conf");
         try
         {
             File.WriteAllText(path, """
@@ -63,7 +63,7 @@ public sealed class ProductLogicTests
     [Fact]
     public void WireGuardConfig_InvalidBase64Key_IsRejected()
     {
-        var path = Path.Combine(Path.GetTempPath(), $"netspeed-{Guid.NewGuid():N}.conf");
+        var path = Path.ChangeExtension(Path.Combine(Path.GetTempPath(), Path.GetRandomFileName()), ".conf");
         try
         {
             File.WriteAllText(path, """
@@ -91,7 +91,7 @@ public sealed class ProductLogicTests
     [Fact]
     public void WireGuardConfig_InvalidEndpoint_IsRejected()
     {
-        var path = Path.Combine(Path.GetTempPath(), $"netspeed-{Guid.NewGuid():N}.conf");
+        var path = Path.ChangeExtension(Path.Combine(Path.GetTempPath(), Path.GetRandomFileName()), ".conf");
         try
         {
             File.WriteAllText(path, """
