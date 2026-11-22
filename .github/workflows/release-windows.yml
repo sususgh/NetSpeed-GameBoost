@@ -96,6 +96,23 @@ jobs:
           if (!(Test-Path $setup)) { throw "Setup installer was not generated: $setup" }
           if ((Get-Item $setup).Length -lt 10MB) { throw 'Setup installer is unexpectedly small.' }
 
+      - name: Smoke-test installer install and uninstall
+        shell: pwsh
+        run: |
+          $setup = (Resolve-Path "./artifacts/NetSpeed-GameBoost-Setup-v$env:APP_VERSION.exe").Path
+          $installDir = Join-Path $env:RUNNER_TEMP "NetSpeed GameBoost Smoke Test"
+          $installArgs = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$installDir`""
+          $installerProcess = Start-Process -FilePath $setup -ArgumentList $installArgs -Wait -PassThru
+          if ($installerProcess.ExitCode -ne 0) { throw "Installer exited with code $($installerProcess.ExitCode)" }
+          $installedExe = Join-Path $installDir "NetSpeed.GameBoost.Desktop.exe"
+          if (!(Test-Path $installedExe)) { throw "Installed application was not found at $installedExe" }
+          $uninstaller = Join-Path $installDir "unins000.exe"
+          if (!(Test-Path $uninstaller)) { throw 'Uninstaller was not created.' }
+          & $uninstaller /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+          if ($LASTEXITCODE -ne 0) { throw "Uninstaller exited with code $LASTEXITCODE" }
+          if (Test-Path $installedExe) { throw 'Application executable still exists after uninstall.' }
+          Write-Host 'Silent install and uninstall smoke test passed.'
+
       - name: Generate SHA256 checksums
         shell: pwsh
         run: |
