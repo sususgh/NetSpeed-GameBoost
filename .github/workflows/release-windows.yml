@@ -1,25 +1,25 @@
 name: Build and Release Windows App
 
 on:
+  pull_request:
+    branches: [ main ]
   push:
-    branches:
-      - main
-    tags:
-      - 'v*'
+    branches: [ main ]
+    tags: [ 'v*' ]
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: windows-release-\${{ github.ref }}
+  group: windows-release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  build-and-release:
-    name: Build portable ZIP and Windows installer
+  build:
+    name: Build, package and verify Windows x64
     runs-on: windows-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -29,8 +29,24 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      - name: Determine package version
+        id: version
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME.StartsWith('v')) {
+            $version = $env:GITHUB_REF_NAME.Substring(1)
+          } else {
+            $version = "1.2.0-ci.$env:GITHUB_RUN_NUMBER"
+          }
+          "app_version=$version" >> $env:GITHUB_OUTPUT
+          "APP_VERSION=$version" >> $env:GITHUB_ENV
+          Write-Host "Packaging version: $version"
+
       - name: Restore
         run: dotnet restore ./src/desktop-windows/NetSpeed.GameBoost.Desktop.csproj --runtime win-x64
+
+      - name: Build
+        run: dotnet build ./src/desktop-windows/NetSpeed.GameBoost.Desktop.csproj --configuration Release --runtime win-x64 --no-restore
 
       - name: Publish self-contained Windows x64 app
         run: dotnet publish ./src/desktop-windows/NetSpeed.GameBoost.Desktop.csproj --configuration Release --runtime win-x64 --self-contained true --no-restore -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false --output ./artifacts/publish/win-x64
@@ -40,12 +56,14 @@ jobs:
         run: |
           $exe = './artifacts/publish/win-x64/NetSpeed.GameBoost.Desktop.exe'
           if (!(Test-Path $exe)) { throw 'Published executable was not found.' }
-          if ((Get-Item $exe).Length -lt 1MB) { throw 'Published executable is unexpectedly small.' }
+          $item = Get-Item $exe
+          if ($item.Length -lt 30MB) { throw "Self-contained executable is unexpectedly small: $($item.Length) bytes" }
+          Write-Host "Verified executable size: $($item.Length) bytes"
 
       - name: Create portable ZIP
         shell: pwsh
         run: |
-          Compress-Archive -Path './artifacts/publish/win-x64/*' -DestinationPath './artifacts/NetSpeed-GameBoost-Windows-x64-Portable.zip' -Force
+          Compress-Archive -Path './artifacts/publish/win-x64/*' -DestinationPath "./artifacts/NetSpeed-GameBoost-Windows-x64-Portable-v$env:APP_VERSION.zip" -Force
 
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
@@ -64,25 +82,52 @@ jobs:
             if ($found) { $iscc = $found.FullName }
           }
           if (!$iscc) { throw 'Inno Setup compiler ISCC.exe could not be located.' }
-          Write-Host "Using Inno Setup compiler: $iscc"
-          & $iscc "./installer/NetSpeed-GameBoost.iss"
+          & $iscc "/DAppVersion=$env:APP_VERSION" "./installer/NetSpeed-GameBoost.iss"
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
-          if (!(Test-Path './artifacts/NetSpeed-GameBoost-Setup-v1.1.0.exe')) { throw 'Setup installer was not generated.' }
+          $setup = "./artifacts/NetSpeed-GameBoost-Setup-v$env:APP_VERSION.exe"
+          if (!(Test-Path $setup)) { throw "Setup installer was not generated: $setup" }
+          if ((Get-Item $setup).Length -lt 10MB) { throw 'Setup installer is unexpectedly small.' }
 
       - name: Generate SHA256 checksums
         shell: pwsh
         run: |
-          Get-FileHash './artifacts/NetSpeed-GameBoost-Windows-x64-Portable.zip' -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  NetSpeed-GameBoost-Windows-x64-Portable.zip" } | Out-File './artifacts/SHA256SUMS.txt' -Encoding ascii
-          Get-FileHash './artifacts/NetSpeed-GameBoost-Setup-v1.1.0.exe' -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  NetSpeed-GameBoost-Setup-v1.1.0.exe" } | Add-Content './artifacts/SHA256SUMS.txt' -Encoding ascii
+          $portable = "./artifacts/NetSpeed-GameBoost-Windows-x64-Portable-v$env:APP_VERSION.zip"
+          $setup = "./artifacts/NetSpeed-GameBoost-Setup-v$env:APP_VERSION.exe"
+          Get-FileHash $portable -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $([IO.Path]::GetFileName($portable))" } | Out-File './artifacts/SHA256SUMS.txt' -Encoding ascii
+          Get-FileHash $setup -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $([IO.Path]::GetFileName($setup))" } | Add-Content './artifacts/SHA256SUMS.txt' -Encoding ascii
+
+      - name: Upload verified build packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: NetSpeed-GameBoost-Windows-x64-v${{ steps.version.outputs.app_version }}
+          path: |
+            artifacts/NetSpeed-GameBoost-Setup-v${{ steps.version.outputs.app_version }}.exe
+            artifacts/NetSpeed-GameBoost-Windows-x64-Portable-v${{ steps.version.outputs.app_version }}.zip
+            artifacts/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Publish tagged GitHub Release
+    needs: build
+    if: github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified build packages
+        uses: actions/download-artifact@v4
+        with:
+          name: NetSpeed-GameBoost-Windows-x64-v${{ needs.build.outputs.app_version }}
+          path: ./artifacts
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: NetSpeed GameBoost v1.1.0
-          tag_name: v1.1.0
-          target_commitish: main
+          name: NetSpeed GameBoost ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
           generate_release_notes: true
           files: |
-            artifacts/NetSpeed-GameBoost-Windows-x64-Portable.zip
-            artifacts/NetSpeed-GameBoost-Setup-v1.1.0.exe
+            artifacts/*.exe
+            artifacts/*.zip
             artifacts/SHA256SUMS.txt
