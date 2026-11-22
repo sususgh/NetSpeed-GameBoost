@@ -54,6 +54,7 @@
         <Grid Grid.Column="1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="2.1*"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
@@ -68,7 +69,50 @@
                 </Border>
             </DockPanel>
 
-            <Grid Grid.Row="1">
+            <Border Grid.Row="1" Style="{StaticResource Panel}" Margin="7,0,7,8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="1.2*"/>
+                        <ColumnDefinition Width="1.2*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="1.5*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                        <TextBlock Text="GAME PROFILES" Foreground="#8CA4BD" FontSize="10"/>
+                        <ComboBox x:Name="GameProfileCombo" Height="34" Margin="0,6,0,0"
+                                  DisplayMemberPath="Name" SelectionChanged="GameProfileCombo_SelectionChanged"
+                                  Background="#14283A" Foreground="#EAF7FF"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Margin="0,0,10,0">
+                        <TextBlock Text="游戏名称" Foreground="#8CA4BD" FontSize="10"/>
+                        <TextBox x:Name="ProfileNameInput" Height="34" Margin="0,6,0,0"
+                                 Background="#14283A" Foreground="#EAF7FF" BorderBrush="#31516B"
+                                 Padding="8,5"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Margin="0,0,10,0">
+                        <TextBlock Text="EXE 进程名" Foreground="#8CA4BD" FontSize="10"/>
+                        <TextBox x:Name="ProcessNameInput" Width="140" Height="34" Margin="0,6,0,0"
+                                 Background="#14283A" Foreground="#EAF7FF" BorderBrush="#31516B"
+                                 Padding="8,5"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="3" Margin="0,0,10,0">
+                        <TextBlock Text="运行状态" Foreground="#8CA4BD" FontSize="10"/>
+                        <TextBlock x:Name="GameProcessStatus" Text="尚未选择游戏" FontSize="14"
+                                   Foreground="#F3C969" Margin="0,12,0,0"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Bottom">
+                        <Button Content="添加档案" Click="AddGameProfileButton_Click"
+                                Background="#12364A" Foreground="#27D7F2" BorderBrush="#1C6686"
+                                Padding="12,8" Margin="0,0,6,0"/>
+                        <Button Content="删除" Click="DeleteGameProfileButton_Click"
+                                Background="#30202A" Foreground="#FF9B9B" BorderBrush="#68404A"
+                                Padding="12,8"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Grid Grid.Row="2">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="1.7*"/>
                     <ColumnDefinition Width="*"/>
@@ -129,7 +173,7 @@
                 </StackPanel>
             </Grid>
 
-            <UniformGrid Grid.Row="2" Columns="4" Margin="0,4,0,0">
+            <UniformGrid Grid.Row="3" Columns="4" Margin="0,4,0,0">
                 <Border Style="{StaticResource Panel}">
                     <StackPanel><TextBlock Text="DOWNLOAD" Foreground="#8CA4BD" FontSize="10"/><TextBlock x:Name="DownloadText" Text="读取中…" FontSize="25" Foreground="#27D7F2" Margin="0,8,0,0"/><TextBlock Text="实时接收速率" Foreground="#8CA4BD" FontSize="10"/></StackPanel>
                 </Border>
