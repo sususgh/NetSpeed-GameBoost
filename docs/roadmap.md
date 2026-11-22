@@ -7,9 +7,10 @@
 - [ ] Build and run verification on Windows 10/11
 
 ## Phase 2 — diagnostics
-- [ ] DNS resolver latency tests with clear timeout handling
-- [ ] ICMP/TCP endpoint probes
-- [ ] Rolling latency, jitter, and packet-loss metrics
+- [x] System-configured DNS resolution timing with timeout handling
+- [x] ICMP ping probe with timeout handling
+- [x] Average latency, consecutive-sample jitter, and packet-loss metrics
+- [ ] TCP endpoint probes
 - [ ] Exportable local diagnostics report
 
 ## Phase 3 — game profiles
