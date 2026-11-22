@@ -1,6 +1,13 @@
 name: Build Windows Desktop App
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/desktop-windows/**'
+      - '.github/workflows/windows-release.yml'
+      - 'README.md'
+      - 'docs/**'
   push:
     branches: [main]
     paths:
