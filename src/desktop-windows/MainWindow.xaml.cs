@@ -6,6 +6,8 @@ using System.Windows;
 using System.Windows.Threading;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using System.Text;
+using Microsoft.Win32;
 using NetSpeed.GameBoost.Desktop.Diagnostics;
 using NetSpeed.GameBoost.Desktop.Networking;
 
@@ -25,11 +27,17 @@ public partial class MainWindow : Window
     private bool _profilesReady;
     private CancellationTokenSource? _routeAnalysisCts;
     private readonly RouteHistoryService _routeHistoryService = new();
+    private readonly ConnectionChangeTracker _connectionChangeTracker = new();
+    private readonly DispatcherTimer _connectionMonitorTimer = new() { Interval = TimeSpan.FromSeconds(3) };
+    private bool _connectionPollRunning;
+    private bool _connectionMonitoring;
+    private string? _monitoredProcessName;
 
     public MainWindow()
     {
         InitializeComponent();
         _timer.Tick += (_, _) => UpdateNetworkStats();
+        _connectionMonitorTimer.Tick += async (_, _) => await PollGameConnectionsAsync();
         Loaded += async (_, _) =>
         {
             UpdateNetworkStats();
@@ -42,6 +50,7 @@ public partial class MainWindow : Window
         {
             _timer.Stop();
             _profileTimer.Stop();
+            _connectionMonitorTimer.Stop();
             _diagnosticsCts?.Cancel();
             _diagnosticsCts?.Dispose();
         };
@@ -208,6 +217,145 @@ public partial class MainWindow : Window
         }
     }
 
+
+    private async void MonitorGameConnectionsButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_connectionMonitoring)
+        {
+            if (GameProfileCombo.SelectedItem is not GameProfile profile)
+            {
+                ConnectionChangeStatus.Text = "请先选择游戏档案";
+                return;
+            }
+
+            _connectionChangeTracker.Reset();
+            _monitoredProcessName = profile.ProcessName;
+            _connectionMonitoring = true;
+            MonitorGameConnectionsButton.Content = "停止监控";
+            ConnectionChangeStatus.Text = "正在建立基线快照（每 3 秒检查一次）…";
+            _connectionMonitorTimer.Start();
+            await PollGameConnectionsAsync();
+            return;
+        }
+
+        _connectionMonitoring = false;
+        _connectionMonitorTimer.Stop();
+        MonitorGameConnectionsButton.Content = "监控变化";
+        ConnectionChangeStatus.Text = "连接变化监控已停止；已记录的变化仍可导出。";
+    }
+
+    private async Task PollGameConnectionsAsync()
+    {
+        if (!_connectionMonitoring || _connectionPollRunning)
+            return;
+
+        if (GameProfileCombo.SelectedItem is not GameProfile profile)
+        {
+            _connectionMonitoring = false;
+            _connectionMonitorTimer.Stop();
+            MonitorGameConnectionsButton.Content = "监控变化";
+            ConnectionChangeStatus.Text = "已停止：没有选中的游戏档案";
+            return;
+        }
+
+        _connectionPollRunning = true;
+        try
+        {
+            if (!string.Equals(_monitoredProcessName, profile.ProcessName, StringComparison.OrdinalIgnoreCase))
+            {
+                _connectionChangeTracker.Reset();
+                _monitoredProcessName = profile.ProcessName;
+                ConnectionChangesList.Items.Clear();
+            }
+
+            var snapshot = await GameConnectionMonitor.GetConnectionsForProcessAsync(profile.ProcessName);
+            var changes = _connectionChangeTracker.Update(snapshot);
+            foreach (var change in changes)
+                ConnectionChangesList.Items.Insert(0, change.ToDisplayString());
+
+            while (ConnectionChangesList.Items.Count > 100)
+                ConnectionChangesList.Items.RemoveAt(ConnectionChangesList.Items.Count - 1);
+
+            var total = _connectionChangeTracker.GetRecentChanges(1000).Count;
+            ConnectionChangeStatus.Text = $"监控中 · {snapshot.Count} 个当前端点 · 已记录 {total} 次变化 · 3 秒采样";
+        }
+        catch (Exception ex)
+        {
+            ConnectionChangeStatus.Text = $"连接监控错误：{ex.Message}";
+            Debug.WriteLine(ex);
+        }
+        finally
+        {
+            _connectionPollRunning = false;
+        }
+    }
+
+    private async void ExportDiagnosticsButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (GameProfileCombo.SelectedItem is not GameProfile profile)
+        {
+            ConnectionChangeStatus.Text = "请先选择游戏档案，再导出诊断";
+            return;
+        }
+
+        var dialog = new SaveFileDialog
+        {
+            Title = "导出游戏网络诊断",
+            FileName = $"NetSpeed-{SanitizeFileName(profile.Name)}-{DateTime.Now:yyyyMMdd-HHmmss}.csv",
+            Filter = "CSV 文件 (*.csv)|*.csv",
+            DefaultExt = ".csv",
+            AddExtension = true
+        };
+        if (dialog.ShowDialog(this) != true)
+            return;
+
+        try
+        {
+            var builder = new StringBuilder();
+            builder.AppendLine("RecordType,TimestampLocal,Game,Protocol,LocalEndpoint,RemoteEndpoint,State,Metric,Value,Details");
+
+            foreach (var change in _connectionChangeTracker.GetRecentChanges(1000).Reverse())
+            {
+                builder.AppendLine(string.Join(",", new[]
+                {
+                    Csv("ConnectionChange"), Csv(change.TimestampUtc.ToLocalTime().ToString("O")),
+                    Csv(profile.Name), Csv(change.Endpoint.Protocol), Csv(change.Endpoint.LocalAddress),
+                    Csv(change.Endpoint.RemoteAddress), Csv(change.Endpoint.State), Csv(change.ChangeType),
+                    Csv(change.Endpoint.ProcessId.ToString()), Csv("Observed from Windows netstat snapshot")
+                }));
+            }
+
+            var routeHistory = await _routeHistoryService.LoadRecentAsync(profile.Name, 50);
+            foreach (var entry in routeHistory.OrderBy(entry => entry.TimestampUtc))
+            {
+                builder.AppendLine(string.Join(",", new[]
+                {
+                    Csv("RouteQuality"), Csv(entry.TimestampUtc.ToLocalTime().ToString("O")),
+                    Csv(entry.GameName), Csv(""), Csv(""), Csv(entry.RemoteAddress), Csv(""),
+                    Csv("ICMP latency ms"), Csv(entry.IcmpLatencyMs?.ToString("0.0") ?? ""),
+                    Csv($"Jitter={entry.JitterMs:0.0}; Loss={entry.PacketLossPercent:0.0}%; Score={entry.QualityScore:0.0}; TCP={entry.TcpConnectLatencyMs?.ToString("0.0") ?? "n/a"}")
+                }));
+            }
+
+            await File.WriteAllTextAsync(dialog.FileName, builder.ToString(), new UTF8Encoding(true));
+            ConnectionChangeStatus.Text = $"诊断 CSV 已导出：{dialog.FileName}";
+        }
+        catch (Exception ex)
+        {
+            ConnectionChangeStatus.Text = $"导出失败：{ex.Message}";
+            Debug.WriteLine(ex);
+        }
+    }
+
+    private static string Csv(string? value) =>
+        "\"" + (value ?? "").Replace("\"", "\"\"") + "\"";
+
+    private static string SanitizeFileName(string value)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var safe = new string(value.Select(character => invalid.Contains(character) ? '_' : character).ToArray());
+        return string.IsNullOrWhiteSpace(safe) ? "Game" : safe;
+    }
 
     private async void RefreshGameConnectionsButton_Click(object sender, RoutedEventArgs e)
     {
