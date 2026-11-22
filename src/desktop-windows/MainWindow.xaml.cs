@@ -792,16 +792,39 @@ public partial class MainWindow : Window
     // VPN/CDN remain unavailable until real relay infrastructure and a tunnel backend are configured.
     private void VpnFeatureButton_Click(object sender, RoutedEventArgs e)
     {
-        MessageBox.Show(
-            "VPN 隧道尚未配置。当前版本不会伪造已连接状态，也不会修改系统路由。\n\n下一步需要导入并验证真实的 WireGuard 节点配置，再由用户明确授权建立隧道。",
-            "VPN 网络 · 尚未配置", MessageBoxButton.OK, MessageBoxImage.Information);
+        var dialog = new OpenFileDialog
+        {
+            Title = "选择 WireGuard 配置文件（仅验证，不会连接）",
+            Filter = "WireGuard 配置 (*.conf)|*.conf|所有文件 (*.*)|*.*",
+            CheckFileExists = true
+        };
+        if (dialog.ShowDialog(this) != true) return;
+
+        try
+        {
+            var config = File.ReadAllText(dialog.FileName);
+            var hasInterface = config.Contains("[Interface]", StringComparison.OrdinalIgnoreCase);
+            var hasPeer = config.Contains("[Peer]", StringComparison.OrdinalIgnoreCase);
+            var hasPrivateKey = config.Split('\n').Any(line => line.TrimStart().StartsWith("PrivateKey", StringComparison.OrdinalIgnoreCase));
+            var hasPublicKey = config.Split('\n').Any(line => line.TrimStart().StartsWith("PublicKey", StringComparison.OrdinalIgnoreCase));
+            var hasEndpoint = config.Split('\n').Any(line => line.TrimStart().StartsWith("Endpoint", StringComparison.OrdinalIgnoreCase));
+            var valid = hasInterface && hasPeer && hasPrivateKey && hasPublicKey && hasEndpoint;
+            MessageBox.Show(
+                valid
+                    ? "配置文件结构检查通过：已找到 Interface、Peer、PrivateKey、PublicKey 和 Endpoint。\n\n注意：本版本尚未集成 WireGuard 隧道驱动/服务，因此这里只完成本地格式检查，不会建立 VPN 连接，也不会上传或保存你的密钥。"
+                    : "配置文件不完整。需要包含 [Interface]、PrivateKey、[Peer]、PublicKey 和 Endpoint。\n\n文件内容不会上传。",
+                "WireGuard 配置检查", MessageBoxButton.OK,
+                valid ? MessageBoxImage.Information : MessageBoxImage.Warning);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"无法读取配置文件：{ex.Message}", "配置检查失败", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private void CdnFeatureButton_Click(object sender, RoutedEventArgs e)
     {
-        MessageBox.Show(
-            "当前没有部署可用的 CDN / 中继服务器，因此不会显示虚假的节点或加速状态。\n\n接入真实服务端后，才能进行节点探测、线路选择和流量转发。",
-            "CDN 网络 · 等待真实节点", MessageBoxButton.OK, MessageBoxImage.Information);
+        ShowNodeProbeWindow();
     }
 
     private void DnsFeatureButton_Click(object sender, RoutedEventArgs e)
