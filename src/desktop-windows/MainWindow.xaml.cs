@@ -3,7 +3,9 @@ using System.Diagnostics;
 using NetSpeed.GameBoost.Desktop.Profiles;
 using System.Net.NetworkInformation;
 using System.Windows;
-using System.Windows.Threading;\nusing System.Windows.Media;\nusing System.Windows.Shapes;
+using System.Windows.Threading;
+using System.Windows.Media;
+using System.Windows.Shapes;
 using NetSpeed.GameBoost.Desktop.Diagnostics;
 using NetSpeed.GameBoost.Desktop.Networking;
 
@@ -20,7 +22,9 @@ public partial class MainWindow : Window
     private readonly GameProfileService _profileService = new();
     private readonly ObservableCollection<GameProfile> _profiles = [];
     private readonly DispatcherTimer _profileTimer = new() { Interval = TimeSpan.FromSeconds(2) };
-    private bool _profilesReady;\n    private CancellationTokenSource? _routeAnalysisCts;\n    private readonly RouteHistoryService _routeHistoryService = new();
+    private bool _profilesReady;
+    private CancellationTokenSource? _routeAnalysisCts;
+    private readonly RouteHistoryService _routeHistoryService = new();
 
     public MainWindow()
     {
