@@ -24,8 +24,8 @@ public sealed record DnsServerResult(
 }
 
 /// <summary>
-/// Sends a single bounded DNS A-record query to an explicitly selected resolver.
-/// DNS traffic is ordinary unencrypted UDP/53; no system DNS settings are changed.
+/// Sends bounded DNS A-record queries using DNS-over-HTTPS (DoH).
+/// TLS certificate validation remains enabled; no plaintext fallback or system DNS changes are made.
 /// </summary>
 public static class DnsResolverComparison
 {
@@ -92,11 +92,11 @@ public static class DnsResolverComparison
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
                 timer.Stop();
-                return new DnsServerResult(item.Endpoint.Provider, item.Address!.ToString(),
+                return new DnsServerResult(item.Endpoint.Provider, item.Uri!.ToString(),
                     item.Endpoint.Region, hostname, timer.Elapsed.TotalMilliseconds, [],
                     $"超时（{timeoutMs} ms）");
             }
-            catch (Exception ex) when (ex is HttpRequestException or IOException or FormatException or InvalidDataException or TaskCanceledException)
+            catch (Exception ex) when (ex is HttpRequestException or IOException or FormatException or InvalidDataException)
             {
                 timer.Stop();
                 return new DnsServerResult(item.Endpoint.Provider, item.Address!.ToString(),
