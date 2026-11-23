@@ -100,11 +100,6 @@ jobs:
           if ($item.Length -lt 30MB) { throw "Self-contained executable is unexpectedly small: $($item.Length) bytes" }
           Write-Host "Verified executable size: $($item.Length) bytes"
 
-      - name: Create portable ZIP
-        shell: pwsh
-        run: |
-          Compress-Archive -Path './artifacts/publish/win-x64/*' -DestinationPath "./artifacts/NetSpeed-GameBoost-Windows-x64-Portable-v$env:APP_VERSION.zip" -Force
-
       - name: Bundle OpenRung runtime
         shell: pwsh
         run: |
@@ -115,6 +110,11 @@ jobs:
             if (!(Test-Path (Join-Path $target $name))) { throw "Required OpenRung runtime file missing: $name" }
           }
           Write-Host "Bundled upstream OpenRung client and live relay discovery helper."
+
+      - name: Create portable ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive -Path './artifacts/publish/win-x64/*' -DestinationPath "./artifacts/NetSpeed-GameBoost-Windows-x64-Portable-v$env:APP_VERSION.zip" -Force
 
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
@@ -151,6 +151,10 @@ jobs:
           if (!(Test-Path $installedExe)) { throw "Installed application was not found at $installedExe" }
           foreach ($name in @("openrung-client.exe", "OpenRungNodeDiscovery.exe")) {
             $component = Join-Path $installDir "OpenRung\$name"
+            if (!(Test-Path $component)) { throw "Installed OpenRung component missing: $component" }
+          }
+          foreach ($name in @("openrung-client.exe", "OpenRungNodeDiscovery.exe")) {
+            $component = Join-Path $installDir "OpenRung\\$name"
             if (!(Test-Path $component)) { throw "Installed OpenRung component missing: $component" }
           }
           $uninstaller = Join-Path $installDir "unins000.exe"
