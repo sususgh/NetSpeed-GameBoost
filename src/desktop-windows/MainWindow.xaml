@@ -220,6 +220,9 @@
                                        FontSize="11" TextWrapping="Wrap"/>
                             <ListBox x:Name="NetworkHealthEventsList" Height="78" Background="#0B1322"
                                      Foreground="#CFE8F5" BorderBrush="#20364D" FontSize="9"/>
+                            <TextBlock Text="LIVE TRAFFIC FLOW · 每秒采样" Foreground="#8CA4BD" FontSize="9" Margin="0,12,0,4"/>
+                            <Canvas x:Name="TrafficChart" Height="86" Background="#0B1322" ClipToBounds="True"/>
+                            <TextBlock x:Name="TrafficFlowSummary" Text="下载 -- · 上传 --" Foreground="#AFC8D8" FontSize="9" Margin="0,4,0,0"/>
                         </StackPanel>
                     </Border>
 
@@ -286,6 +289,35 @@
                             <ListBox x:Name="RouteHistoryList" Height="58"
                                      Background="#0B1322" Foreground="#AFC8D8"
                                      BorderBrush="#20364D" FontSize="9"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border x:Name="LanNodePanel" Style="{StaticResource Panel}">
+                        <StackPanel>
+                            <TextBlock Text="LOCAL LAN NODE" Foreground="#8CA4BD" FontSize="10"/>
+                            <TextBlock Text="本机局域网节点 · 手机可直接访问" FontSize="16" FontWeight="SemiBold" Margin="0,8,0,4"/>
+                            <TextBlock Text="本机 IPv4 地址" Foreground="#8CA4BD" FontSize="10"/>
+                            <TextBlock x:Name="LanNodeAddressesText" Text="正在检测局域网地址…" Foreground="#65E6C2" FontSize="12" TextWrapping="Wrap" Margin="0,4,0,8"/>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="监听端口" Foreground="#8CA4BD" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBox x:Name="LanNodePortInput" Text="8765" Width="90" Padding="7,5"
+                                         Background="#14283A" Foreground="#EAF7FF" BorderBrush="#31516B"/>
+                                <Button Content="刷新 IP" Click="RefreshLanNodeAddressesButton_Click"
+                                        Background="#172B3B" Foreground="#AFC8D8" BorderBrush="#31516B"
+                                        Padding="9,6" Margin="8,0,0,0"/>
+                            </StackPanel>
+                            <TextBlock x:Name="LanNodeStatus" Text="节点未启动。启动后，手机浏览器可访问 http://电脑局域网IP:8765/ 检查连通性。"
+                                       Foreground="#AFC8D8" FontSize="10" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                <Button x:Name="StartLanNodeButton" Content="启动局域网节点" Click="StartLanNodeButton_Click"
+                                        Background="#12364A" Foreground="#27D7F2" BorderBrush="#1C6686" Padding="10,6" Margin="0,0,6,0"/>
+                                <Button x:Name="StopLanNodeButton" Content="停止节点" Click="StopLanNodeButton_Click"
+                                        Background="#30202A" Foreground="#FF9B9B" BorderBrush="#68404A" Padding="10,6" IsEnabled="False"/>
+                                <Button Content="复制访问地址" Click="CopyLanNodeAddressButton_Click"
+                                        Background="#172B3B" Foreground="#AFC8D8" BorderBrush="#31516B" Padding="10,6" Margin="6,0,0,0"/>
+                            </StackPanel>
+                            <TextBlock Text="安全说明：只提供局域网健康检测页面，不转发游戏数据；Windows 防火墙可能需要允许此端口的专用网络入站连接。"
+                                       Foreground="#D4B58D" FontSize="9" TextWrapping="Wrap" Margin="0,8,0,0"/>
                         </StackPanel>
                     </Border>
 
