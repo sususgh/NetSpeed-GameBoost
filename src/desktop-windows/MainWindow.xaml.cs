@@ -957,9 +957,57 @@ public partial class MainWindow : Window
         dialog.ShowDialog();
     }
 
-    // WireGuard uses the official Windows CLI and signed driver; no custom tunnel crypto is implemented.
+    // VPN backend chooser: OpenVPN profiles and WireGuard profiles are handled by their official clients.
     private async void VpnFeatureButton_Click(object sender, RoutedEventArgs e)
     {
+        var backendChoice = MessageBox.Show(
+            "选择 VPN 后端：\n\n“是”= OpenVPN（导入 .ovpn 节点配置）\n“否”= WireGuard（导入 .conf 配置）\n“取消”= 返回。",
+            "选择 VPN 协议", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+        if (backendChoice == MessageBoxResult.Cancel) return;
+        if (backendChoice == MessageBoxResult.Yes)
+        {
+            var openVpn = new OpenVpnTunnelManager();
+            var executable = openVpn.FindExecutable();
+            if (executable is null)
+            {
+                MessageBox.Show(
+                    "未检测到 OpenVPN Community 的 openvpn.exe。请先安装官方 OpenVPN 客户端，再重新导入 .ovpn 配置。",
+                    "OpenVPN 未安装", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var configDialog = new OpenFileDialog
+            {
+                Title = "选择可信 VPN 服务商提供的 OpenVPN 配置",
+                Filter = "OpenVPN 配置 (*.ovpn)|*.ovpn|所有文件 (*.*)|*.*",
+                CheckFileExists = true
+            };
+            if (configDialog.ShowDialog(this) != true) return;
+
+            var validation = openVpn.ValidateConfig(configDialog.FileName);
+            if (!validation.IsValid)
+            {
+                MessageBox.Show(string.Join("\n", validation.Errors), "OpenVPN 配置检查失败",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var warnings = validation.Warnings.Length == 0
+                ? "无结构性提醒。"
+                : string.Join("\n", validation.Warnings);
+            var confirm = MessageBox.Show(
+                $"OpenVPN 配置基本检查通过。\n{warnings}\n\n接下来将调用官方 openvpn.exe 并请求管理员权限。请只导入可信服务商提供的配置。是否继续？",
+                "启动 OpenVPN 节点", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (confirm != MessageBoxResult.Yes) return;
+
+            var result = openVpn.Start(configDialog.FileName);
+            MessageBox.Show(
+                result.Detail + "\n\n注意：启动进程不等于 VPN 已连接。本版本尚未解析 OpenVPN 管理接口/握手状态，也不会宣称游戏专属分流已生效。",
+                result.Started ? "OpenVPN 已启动" : "OpenVPN 启动失败",
+                MessageBoxButton.OK, result.Started ? MessageBoxImage.Information : MessageBoxImage.Warning);
+            return;
+        }
+
         var manager = new WireGuardTunnelManager();
         var backend = manager.Detect();
         if (!backend.IsInstalled)
