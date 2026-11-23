@@ -1,4 +1,7 @@
 using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
 using NetSpeed.GameBoost.Desktop.Networking;
 using NetSpeed.GameBoost.Desktop.Profiles;
 using Xunit;
@@ -193,6 +196,40 @@ public sealed class ProductLogicTests
 
         Assert.Contains("ICS", description, StringComparison.Ordinal);
         Assert.Contains("Windows 移动热点", description, StringComparison.Ordinal);
+    }
+
+
+    [Fact]
+    public void LanNodeHost_InvalidPort_IsRejected()
+    {
+        using var host = new LanNodeHost();
+        Assert.Throws<ArgumentOutOfRangeException>(() => host.Start(80));
+    }
+
+    [Fact]
+    public async Task LanNodeHost_StartsAndServesHealthEndpoint()
+    {
+        using var portProbe = new TcpListener(System.Net.IPAddress.Loopback, 0);
+        portProbe.Start();
+        var port = ((IPEndPoint)portProbe.LocalEndpoint).Port;
+        portProbe.Stop();
+
+        using var host = new LanNodeHost();
+        host.Start(port);
+        using var client = new TcpClient();
+        await client.ConnectAsync(System.Net.IPAddress.Loopback, port);
+        await using var stream = client.GetStream();
+        var request = Encoding.ASCII.GetBytes("GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+        await stream.WriteAsync(request);
+        using var reader = new StreamReader(stream, Encoding.UTF8);
+        var response = await reader.ReadToEndAsync();
+
+        Assert.Contains("200 OK", response, StringComparison.Ordinal);
+        Assert.Contains("gameTrafficForwarding", response, StringComparison.Ordinal);
+        Assert.Equal(1, host.Requests);
+        Assert.True(host.IsRunning);
+        await host.StopAsync();
+        Assert.False(host.IsRunning);
     }
 
 }
