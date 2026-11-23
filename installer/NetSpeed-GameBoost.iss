@@ -1,5 +1,7 @@
 #define AppName "NetSpeed GameBoost"
-#define AppVersion "1.1.0"
+#ifndef AppVersion
+  #define AppVersion "1.2.0"
+#endif
 #define AppPublisher "NetSpeed GameBoost"
 #define AppExeName "NetSpeed.GameBoost.Desktop.exe"
 
@@ -16,8 +18,8 @@ OutputBaseFilename=NetSpeed-GameBoost-Setup-v{#AppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
-ArchitecturesInstallIn64BitMode=x64
-ArchitecturesAllowed=x64
+ArchitecturesInstallIn64BitMode=x64os
+ArchitecturesAllowed=x64os
 PrivilegesRequired=lowest
 UninstallDisplayIcon={app}\{#AppExeName}
 SetupLogging=yes

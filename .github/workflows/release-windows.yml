@@ -1,36 +1,92 @@
 name: Build and Release Windows App
 
 on:
+  pull_request:
+    branches: [ main ]
   push:
-    branches:
-      - main
-    tags:
-      - 'v*'
+    branches: [ main ]
+    tags: [ 'v*' ]
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: windows-release-\${{ github.ref }}
+  group: windows-release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  build-and-release:
-    name: Build portable ZIP and Windows installer
+  build:
+    name: Build, package and verify Windows x64
+    outputs:
+      app_version: ${{ steps.version.outputs.app_version }}
     runs-on: windows-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
     steps:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Check out pinned OpenRung client engine
+        uses: actions/checkout@v4
+        with:
+          repository: openrung/openrung
+          ref: 6d7e375cc76ecc0803bb5f913a99b057cb0330b8
+          path: third_party/openrung
+
+      - name: Set up Go for OpenRung
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.25.5
+          cache: false
+
+      - name: Build OpenRung client and signed relay discovery
+        shell: pwsh
+        run: |
+          git -C third_party/openrung apply "$env:GITHUB_WORKSPACE/patches/openrung-headless-stdin.patch"
+          New-Item -ItemType Directory -Force "./third_party/openrung/cmd/netspeed-discovery" | Out-Null
+          Copy-Item "./tools/openrung-node-discovery/main.go" "./third_party/openrung/cmd/netspeed-discovery/main.go"
+          New-Item -ItemType Directory -Force "./artifacts/openrung" | Out-Null
+          Push-Location "./third_party/openrung"
+          go build -tags "with_utls,with_external_windivert" -o "$env:GITHUB_WORKSPACE/artifacts/openrung/openrung-client.exe" ./cmd/client
+          if ($LASTEXITCODE -ne 0) { throw "OpenRung client build failed: $LASTEXITCODE" }
+          go build -tags "with_utls,with_external_windivert" -o "$env:GITHUB_WORKSPACE/artifacts/openrung/OpenRungNodeDiscovery.exe" ./cmd/netspeed-discovery
+          if ($LASTEXITCODE -ne 0) { throw "OpenRung discovery build failed: $LASTEXITCODE" }
+          Pop-Location
+          Copy-Item "./third_party/openrung/LICENSE" "./artifacts/openrung/OPENRUNG-LICENSE.txt"
+          if (Test-Path "./third_party/openrung/THIRD_PARTY_NOTICES.md") {
+            Copy-Item "./third_party/openrung/THIRD_PARTY_NOTICES.md" "./artifacts/openrung/OPENRUNG-THIRD-PARTY-NOTICES.txt"
+          }
+          & "./artifacts/openrung/openrung-client.exe" version
+          if ($LASTEXITCODE -ne 0) { throw "OpenRung client version smoke test failed." }
       - name: Set up .NET 8
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
 
+      - name: Determine package version
+        id: version
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME.StartsWith('v')) {
+            $version = $env:GITHUB_REF_NAME.Substring(1)
+          } else {
+            $version = "1.2.0-ci.$env:GITHUB_RUN_NUMBER"
+          }
+          "app_version=$version" >> $env:GITHUB_OUTPUT
+          "APP_VERSION=$version" >> $env:GITHUB_ENV
+          Write-Host "Packaging version: $version"
+
       - name: Restore
         run: dotnet restore ./src/desktop-windows/NetSpeed.GameBoost.Desktop.csproj --runtime win-x64
+
+      - name: Build
+        run: dotnet build ./src/desktop-windows/NetSpeed.GameBoost.Desktop.csproj --configuration Release --runtime win-x64 --no-restore
+
+      - name: Restore product tests
+        run: dotnet restore ./tests/NetSpeed.GameBoost.Tests/NetSpeed.GameBoost.Tests.csproj --runtime win-x64
+
+      - name: Run product regression tests
+        run: dotnet test ./tests/NetSpeed.GameBoost.Tests/NetSpeed.GameBoost.Tests.csproj --configuration Release --no-restore
 
       - name: Publish self-contained Windows x64 app
         run: dotnet publish ./src/desktop-windows/NetSpeed.GameBoost.Desktop.csproj --configuration Release --runtime win-x64 --self-contained true --no-restore -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false --output ./artifacts/publish/win-x64
@@ -40,12 +96,25 @@ jobs:
         run: |
           $exe = './artifacts/publish/win-x64/NetSpeed.GameBoost.Desktop.exe'
           if (!(Test-Path $exe)) { throw 'Published executable was not found.' }
-          if ((Get-Item $exe).Length -lt 1MB) { throw 'Published executable is unexpectedly small.' }
+          $item = Get-Item $exe
+          if ($item.Length -lt 30MB) { throw "Self-contained executable is unexpectedly small: $($item.Length) bytes" }
+          Write-Host "Verified executable size: $($item.Length) bytes"
+
+      - name: Bundle OpenRung runtime
+        shell: pwsh
+        run: |
+          $target = "./artifacts/publish/win-x64/OpenRung"
+          New-Item -ItemType Directory -Force $target | Out-Null
+          Copy-Item "./artifacts/openrung/*" $target -Recurse -Force
+          foreach ($name in @("openrung-client.exe", "OpenRungNodeDiscovery.exe", "OPENRUNG-LICENSE.txt")) {
+            if (!(Test-Path (Join-Path $target $name))) { throw "Required OpenRung runtime file missing: $name" }
+          }
+          Write-Host "Bundled upstream OpenRung client and live relay discovery helper."
 
       - name: Create portable ZIP
         shell: pwsh
         run: |
-          Compress-Archive -Path './artifacts/publish/win-x64/*' -DestinationPath './artifacts/NetSpeed-GameBoost-Windows-x64-Portable.zip' -Force
+          Compress-Archive -Path './artifacts/publish/win-x64/*' -DestinationPath "./artifacts/NetSpeed-GameBoost-Windows-x64-Portable-v$env:APP_VERSION.zip" -Force
 
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
@@ -64,25 +133,73 @@ jobs:
             if ($found) { $iscc = $found.FullName }
           }
           if (!$iscc) { throw 'Inno Setup compiler ISCC.exe could not be located.' }
-          Write-Host "Using Inno Setup compiler: $iscc"
-          & $iscc "./installer/NetSpeed-GameBoost.iss"
+          & $iscc "/DAppVersion=$env:APP_VERSION" "./installer/NetSpeed-GameBoost.iss"
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
-          if (!(Test-Path './artifacts/NetSpeed-GameBoost-Setup-v1.1.0.exe')) { throw 'Setup installer was not generated.' }
+          $setup = "./artifacts/NetSpeed-GameBoost-Setup-v$env:APP_VERSION.exe"
+          if (!(Test-Path $setup)) { throw "Setup installer was not generated: $setup" }
+          if ((Get-Item $setup).Length -lt 10MB) { throw 'Setup installer is unexpectedly small.' }
+
+      - name: Smoke-test installer install and uninstall
+        shell: pwsh
+        run: |
+          $setup = (Resolve-Path "./artifacts/NetSpeed-GameBoost-Setup-v$env:APP_VERSION.exe").Path
+          $installDir = Join-Path $env:RUNNER_TEMP "NetSpeed GameBoost Smoke Test"
+          $installArgs = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$installDir`""
+          $installerProcess = Start-Process -FilePath $setup -ArgumentList $installArgs -Wait -PassThru
+          if ($installerProcess.ExitCode -ne 0) { throw "Installer exited with code $($installerProcess.ExitCode)" }
+          $installedExe = Join-Path $installDir "NetSpeed.GameBoost.Desktop.exe"
+          if (!(Test-Path $installedExe)) { throw "Installed application was not found at $installedExe" }
+          foreach ($name in @("openrung-client.exe", "OpenRungNodeDiscovery.exe")) {
+            $component = Join-Path $installDir "OpenRung\$name"
+            if (!(Test-Path $component)) { throw "Installed OpenRung component missing: $component" }
+          }
+          $uninstaller = Join-Path $installDir "unins000.exe"
+          if (!(Test-Path $uninstaller)) { throw 'Uninstaller was not created.' }
+          $uninstallProcess = Start-Process -FilePath $uninstaller -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -Wait -PassThru
+          if ($uninstallProcess.ExitCode -ne 0) { throw "Uninstaller exited with code $($uninstallProcess.ExitCode)" }
+          if (Test-Path $installedExe) { throw 'Application executable still exists after uninstall.' }
+          Write-Host 'Silent install and uninstall smoke test passed.'
 
       - name: Generate SHA256 checksums
         shell: pwsh
         run: |
-          Get-FileHash './artifacts/NetSpeed-GameBoost-Windows-x64-Portable.zip' -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  NetSpeed-GameBoost-Windows-x64-Portable.zip" } | Out-File './artifacts/SHA256SUMS.txt' -Encoding ascii
-          Get-FileHash './artifacts/NetSpeed-GameBoost-Setup-v1.1.0.exe' -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  NetSpeed-GameBoost-Setup-v1.1.0.exe" } | Add-Content './artifacts/SHA256SUMS.txt' -Encoding ascii
+          $portable = "./artifacts/NetSpeed-GameBoost-Windows-x64-Portable-v$env:APP_VERSION.zip"
+          $setup = "./artifacts/NetSpeed-GameBoost-Setup-v$env:APP_VERSION.exe"
+          Get-FileHash $portable -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $([IO.Path]::GetFileName($portable))" } | Out-File './artifacts/SHA256SUMS.txt' -Encoding ascii
+          Get-FileHash $setup -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $([IO.Path]::GetFileName($setup))" } | Add-Content './artifacts/SHA256SUMS.txt' -Encoding ascii
+
+      - name: Upload verified build packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: NetSpeed-GameBoost-Windows-x64-v${{ steps.version.outputs.app_version }}
+          path: |
+            artifacts/NetSpeed-GameBoost-Setup-v${{ steps.version.outputs.app_version }}.exe
+            artifacts/NetSpeed-GameBoost-Windows-x64-Portable-v${{ steps.version.outputs.app_version }}.zip
+            artifacts/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Publish tagged GitHub Release
+    needs: build
+    if: github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified build packages
+        uses: actions/download-artifact@v4
+        with:
+          name: NetSpeed-GameBoost-Windows-x64-v${{ needs.build.outputs.app_version }}
+          path: ./artifacts
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: NetSpeed GameBoost v1.1.0
-          tag_name: v1.1.0
-          target_commitish: main
+          name: NetSpeed GameBoost ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
           generate_release_notes: true
           files: |
-            artifacts/NetSpeed-GameBoost-Windows-x64-Portable.zip
-            artifacts/NetSpeed-GameBoost-Setup-v1.1.0.exe
+            artifacts/*.exe
+            artifacts/*.zip
             artifacts/SHA256SUMS.txt
