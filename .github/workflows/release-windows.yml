@@ -153,10 +153,6 @@ jobs:
             $component = Join-Path $installDir "OpenRung\$name"
             if (!(Test-Path $component)) { throw "Installed OpenRung component missing: $component" }
           }
-          foreach ($name in @("openrung-client.exe", "OpenRungNodeDiscovery.exe")) {
-            $component = Join-Path $installDir "OpenRung\\$name"
-            if (!(Test-Path $component)) { throw "Installed OpenRung component missing: $component" }
-          }
           $uninstaller = Join-Path $installDir "unins000.exe"
           if (!(Test-Path $uninstaller)) { throw 'Uninstaller was not created.' }
           $uninstallProcess = Start-Process -FilePath $uninstaller -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -Wait -PassThru
