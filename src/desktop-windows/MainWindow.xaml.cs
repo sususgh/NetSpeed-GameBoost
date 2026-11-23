@@ -41,6 +41,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _networkHealthTimer = new() { Interval = TimeSpan.FromSeconds(8) };
     private CancellationTokenSource? _networkHealthCts;
     private bool _networkHealthPollRunning;
+    private bool _allowCloseAfterVpnStop;
     private IReadOnlyList<DnsServerResult> _lastDnsResolverResults = Array.Empty<DnsServerResult>();
     private readonly PhoneHotspotRelayManager _phoneHotspotRelayManager = new();
     private PhoneRelayMode _selectedPhoneRelayMode = PhoneRelayMode.AllPhoneTraffic;
@@ -57,6 +58,23 @@ public partial class MainWindow : Window
             if (line.StartsWith("status:", StringComparison.OrdinalIgnoreCase))
                 VpnStatusText.Text = line;
         });
+        Closing += async (_, args) =>
+        {
+            if (_allowCloseAfterVpnStop || !_openRung.IsRunning) return;
+            args.Cancel = true;
+            try
+            {
+                VpnStatusText.Text = "正在安全关闭 VPN…";
+                await _openRung.StopAsync();
+                _allowCloseAfterVpnStop = true;
+                Close();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "VPN 尚未确认完成清理，窗口暂不关闭，以免遗留系统路由。\\n" + ex.Message,
+                    "VPN 清理未完成", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        };
         _timer.Tick += (_, _) => UpdateNetworkStats();
         _connectionMonitorTimer.Tick += async (_, _) => await PollGameConnectionsAsync();
         _networkHealthTimer.Tick += async (_, _) => await PollNetworkHealthAsync();
