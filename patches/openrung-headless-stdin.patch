@@ -1,0 +1,23 @@
+diff --git a/cmd/client/headless.go b/cmd/client/headless.go
+index 0000000..0000000 100644
+--- a/cmd/client/headless.go
++++ b/cmd/client/headless.go
+@@
+ 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+ 	defer stop()
++
++	// The Windows desktop host controls this headless process through stdin.
++	// EOF is a graceful disconnect request, not a hard process kill: engine.Stop
++	// must run so the TUN device, routes, DNS and telemetry are torn down.
++	stdinClosed := make(chan struct{})
++	go func() {
++		_, _ = io.Copy(io.Discard, os.Stdin)
++		close(stdinClosed)
++	}()
+@@
+ 	select {
++	case <-stdinClosed:
++		stop()
++		fmt.Fprintln(os.Stdout, "stdin closed; disconnecting")
++		return nil
+ 	case <-ctx.Done():
