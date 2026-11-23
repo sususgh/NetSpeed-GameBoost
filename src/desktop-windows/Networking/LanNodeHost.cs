@@ -1,3 +1,4 @@
+using System.IO;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -116,10 +117,10 @@ public sealed class LanNodeHost : IDisposable
                 var body = path switch
                 {
                     "/health" or "/healthz" =>
-                        "{\"status\":\"ok\",\"service\":\"NetSpeed-GameBoost LAN node\",\"role\":\"read-only discovery endpoint\",\"gameTrafficForwarding\":false}",
+                        "{\\"status\\":\\"ok\\",\\"service\\":\\"NetSpeed-GameBoost LAN node\\",\\"role\\":\\"read-only discovery endpoint\\",\\"gameTrafficForwarding\\":false}",
                     "/metrics" =>
-                        $"{{\"status\":\"ok\",\"requests\":{Requests},\"port\":{Port},\"gameTrafficForwarding\":false}}",
-                    _ => "<!doctype html><html lang=\"zh-CN\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>NetSpeed LAN Node</title><body style=\"font:16px sans-serif;background:#101a2b;color:#eaf7ff;padding:24px\"><h2>NetSpeed-GameBoost 局域网节点</h2><p>电脑节点在线，手机已成功访问本机。</p><p>状态：正常</p><p>请求计数：" + Requests + "</p><p>这是节点发现与健康检测端点，不是游戏流量代理。</p><a style=\"color:#27d7f2\" href=\"/health\">健康状态 JSON</a> · <a style=\"color:#27d7f2\" href=\"/metrics\">指标 JSON</a></body></html>"
+                        $"{{\\"status\\":\\"ok\\",\\"requests\\":{Requests},\\"port\\":{Port},\\"gameTrafficForwarding\\":false}}",
+                    _ => "<!doctype html><html lang=\\"zh-CN\\"><meta charset=\\"utf-8\\"><meta name=\\"viewport\\" content=\\"width=device-width,initial-scale=1\\"><title>NetSpeed LAN Node</title><body style=\\"font:16px sans-serif;background:#101a2b;color:#eaf7ff;padding:24px\\"><h2>NetSpeed-GameBoost 局域网节点</h2><p>电脑节点在线，手机已成功访问本机。</p><p>状态：正常</p><p>请求计数：" + Requests + "</p><p>这是节点发现与健康检测端点，不是游戏流量代理。</p><a style=\\"color:#27d7f2\\" href=\\"/health\\">健康状态 JSON</a> · <a style=\\"color:#27d7f2\\" href=\\"/metrics\\">指标 JSON</a></body></html>"
                 };
                 var contentType = path is "/health" or "/healthz" or "/metrics"
                     ? "application/json; charset=utf-8"
