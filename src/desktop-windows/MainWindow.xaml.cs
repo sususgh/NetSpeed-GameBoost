@@ -967,6 +967,18 @@ public partial class MainWindow : Window
         if (backendChoice == MessageBoxResult.Yes)
         {
             var openVpn = new OpenVpnTunnelManager();
+            var currentOpenVpnStatus = openVpn.GetStatus();
+            if (!currentOpenVpnStatus.StartsWith("本程序未启动", StringComparison.Ordinal))
+            {
+                var stopChoice = MessageBox.Show(
+                    currentOpenVpnStatus + "\n\n选择“是”停止本程序启动的 OpenVPN 进程；选择“否”保持当前连接。",
+                    "OpenVPN 连接管理", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (stopChoice == MessageBoxResult.Yes)
+                    MessageBox.Show(openVpn.Stop(), "OpenVPN 停止请求",
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
             var executable = openVpn.FindExecutable();
             if (executable is null)
             {
