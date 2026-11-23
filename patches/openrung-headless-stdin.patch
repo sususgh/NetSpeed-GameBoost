@@ -1,11 +1,10 @@
 diff --git a/cmd/client/headless.go b/cmd/client/headless.go
-index 0000000..0000000 100644
 --- a/cmd/client/headless.go
 +++ b/cmd/client/headless.go
-@@
+@@ -118,6 +118,14 @@ func runHeadlessConnect(cfg connectConfig) error {
  	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
  	defer stop()
-+
+ 
 +	// The Windows desktop host controls this headless process through stdin.
 +	// EOF is a graceful disconnect request, not a hard process kill: engine.Stop
 +	// must run so the TUN device, routes, DNS and telemetry are torn down.
@@ -14,10 +13,18 @@ index 0000000..0000000 100644
 +		_, _ = io.Copy(io.Discard, os.Stdin)
 +		close(stdinClosed)
 +	}()
-@@
++
+ 	for _, warning := range legacyFlagWarnings(cfg) {
+ 		fmt.Fprintln(os.Stderr, "warning:", warning)
+ 	}
+@@ -145,6 +153,10 @@ func runHeadlessConnect(cfg connectConfig) error {
+ 	defer engine.Stop()
+ 
  	select {
 +	case <-stdinClosed:
 +		stop()
 +		fmt.Fprintln(os.Stdout, "stdin closed; disconnecting")
 +		return nil
  	case <-ctx.Done():
+ 		stop() // restore default signal handling so a second interrupt force-kills
+ 		fmt.Fprintln(os.Stdout, "interrupted; disconnecting")
