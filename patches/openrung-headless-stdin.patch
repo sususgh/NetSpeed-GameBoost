@@ -1,7 +1,7 @@
 diff --git a/cmd/client/headless.go b/cmd/client/headless.go
 --- a/cmd/client/headless.go
 +++ b/cmd/client/headless.go
-@@ -118,6 +118,14 @@ func runHeadlessConnect(cfg connectConfig) error {
+@@ -117,4 +117,13 @@ func runHeadlessConnect(cfg connectConfig) error {
  	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
  	defer stop()
  
@@ -15,11 +15,7 @@ diff --git a/cmd/client/headless.go b/cmd/client/headless.go
 +	}()
 +
  	for _, warning := range legacyFlagWarnings(cfg) {
- 		fmt.Fprintln(os.Stderr, "warning:", warning)
- 	}
-@@ -145,6 +153,10 @@ func runHeadlessConnect(cfg connectConfig) error {
- 	defer engine.Stop()
- 
+@@ -143,5 +152,9 @@ func runHeadlessConnect(cfg connectConfig) error {
  	select {
 +	case <-stdinClosed:
 +		stop()
@@ -28,3 +24,4 @@ diff --git a/cmd/client/headless.go b/cmd/client/headless.go
  	case <-ctx.Done():
  		stop() // restore default signal handling so a second interrupt force-kills
  		fmt.Fprintln(os.Stdout, "interrupted; disconnecting")
+ 		return nil
