@@ -45,12 +45,18 @@ public partial class MainWindow : Window
     private readonly PhoneHotspotRelayManager _phoneHotspotRelayManager = new();
     private PhoneRelayMode _selectedPhoneRelayMode = PhoneRelayMode.AllPhoneTraffic;
     private readonly LanNodeHost _lanNodeHost = new();
+    private readonly OpenRungClientManager _openRung = new();
     private readonly Queue<(double Down, double Up)> _trafficHistory = new();
     private const int TrafficHistoryCapacity = 60;
 
     public MainWindow()
     {
         InitializeComponent();
+        _openRung.LogReceived += line => Dispatcher.InvokeAsync(() =>
+        {
+            if (line.StartsWith("status:", StringComparison.OrdinalIgnoreCase))
+                VpnStatusText.Text = line;
+        });
         _timer.Tick += (_, _) => UpdateNetworkStats();
         _connectionMonitorTimer.Tick += async (_, _) => await PollGameConnectionsAsync();
         _networkHealthTimer.Tick += async (_, _) => await PollNetworkHealthAsync();
@@ -60,6 +66,16 @@ public partial class MainWindow : Window
             RefreshLanNodeAddresses();
             _timer.Start();
             await InitializeProfilesAsync();
+            var launchArgs = Environment.GetCommandLineArgs();
+            var connectArg = Array.IndexOf(launchArgs, "--openrung-connect");
+            if (connectArg >= 0)
+            {
+                string? relayId = null;
+                var relayArg = Array.IndexOf(launchArgs, "--relay-id");
+                if (relayArg >= 0 && relayArg + 1 < launchArgs.Length)
+                    relayId = launchArgs[relayArg + 1];
+                await StartOpenRungVpnAsync(relayId);
+            }
             _networkHealthTimer.Start();
             await PollNetworkHealthAsync();
             _profileTimer.Tick += (_, _) => RefreshSelectedGameStatus();
@@ -73,6 +89,7 @@ public partial class MainWindow : Window
             _networkHealthTimer.Stop();
             _networkHealthCts?.Cancel();
             _lanNodeHost.Dispose();
+            _openRung.Dispose();
             _networkHealthCts?.Dispose();
             _routeAnalysisCts?.Cancel();
             _routeAnalysisCts?.Dispose();
@@ -862,12 +879,9 @@ public partial class MainWindow : Window
             GameConnectionStatus.Text = "先添加游戏档案：填写游戏名称和 EXE 进程名，再扫描连接与分析线路。";
     }
 
-    private void NodesNavButton_Click(object sender, RoutedEventArgs e)
+    private async void NodesNavButton_Click(object sender, RoutedEventArgs e)
     {
-        LanNodePanel.BringIntoView();
-        RefreshLanNodeAddresses();
-        LanNodePortInput.Focus();
-        LanNodeStatus.Text = "这里显示本机局域网节点。设置端口后点击“启动局域网节点”，手机可用浏览器访问本机 IP:端口。";
+        await ShowOpenRungNodesAsync();
     }
 
     private void DnsNavButton_Click(object sender, RoutedEventArgs e)
@@ -960,83 +974,162 @@ public partial class MainWindow : Window
     // WireGuard uses the official Windows CLI and signed driver; no custom tunnel crypto is implemented.
     private async void VpnFeatureButton_Click(object sender, RoutedEventArgs e)
     {
-        var manager = new WireGuardTunnelManager();
-        var backend = manager.Detect();
-        if (!backend.IsInstalled)
+        if (_openRung.IsRunning)
         {
-            MessageBox.Show(
-                "尚未检测到官方 WireGuard for Windows。VPN 隧道功能需要官方客户端及其签名驱动。\\n\\n请先从 wireguard.com 安装官方版本，然后重新打开此入口。当前不会显示为已连接。",
-                "VPN 后端未安装", MessageBoxButton.OK, MessageBoxImage.Information);
+            VpnStatusText.Text = "正在安全断开…";
+            try
+            {
+                await _openRung.StopAsync();
+                VpnStatusText.Text = "已断开 · 系统路由已恢复";
+                MessageBox.Show("OpenRung VPN 已安全断开。", "VPN", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                VpnStatusText.Text = "断开需要检查";
+                MessageBox.Show(ex.Message, "VPN 断开未完成", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
             return;
         }
 
+        await RequestOpenRungVpnAsync(null);
+    }
+
+    private async Task RequestOpenRungVpnAsync(string? relayId)
+    {
+        if (!OpenRungClientManager.IsAdministrator())
+        {
+            try
+            {
+                OpenRungClientManager.RelaunchElevatedForVpn(relayId);
+                Close();
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                MessageBox.Show("你取消了管理员授权，VPN 没有启动。", "需要管理员权限",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            return;
+        }
+
+        await StartOpenRungVpnAsync(relayId);
+    }
+
+    private async Task StartOpenRungVpnAsync(string? relayId)
+    {
+        VpnFeatureButton.IsEnabled = false;
+        VpnStatusText.Text = "正在连接 OpenRung 节点…";
         try
         {
-            var installedTunnels = await manager.ListTunnelsAsync();
-            if (installedTunnels.Count > 0)
-            {
-                var action = MessageBox.Show(
-                    "检测到已安装的 WireGuard 隧道：\\n" + string.Join("、", installedTunnels) +
-                    "\\n\\n选择“是”可安全卸载一个隧道；选择“否”可继续导入新配置；选择“取消”返回。",
-                    "WireGuard 隧道管理", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
-                if (action == MessageBoxResult.Cancel) return;
-                if (action == MessageBoxResult.Yes)
-                {
-                    var tunnelName = SelectTunnelForRemoval(installedTunnels);
-                    if (tunnelName is null) return;
-                    var status = manager.Detect(tunnelName);
-                    var confirmRemoval = MessageBox.Show(
-                        $"即将通过官方 WireGuard CLI 卸载隧道“{tunnelName}”（当前状态：{status.State}）。是否继续？",
-                        "确认卸载 VPN 隧道", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-                    if (confirmRemoval != MessageBoxResult.Yes) return;
-
-                    var removed = await manager.UninstallTunnelAsync(tunnelName);
-                    MessageBox.Show(
-                        $"已提交卸载请求。卸载后服务状态：{removed.State}。请检查系统网络恢复正常。",
-                        "VPN 隧道卸载", MessageBoxButton.OK, MessageBoxImage.Information);
-                    return;
-                }
-            }
-
-            var dialog = new OpenFileDialog
-            {
-                Title = "选择可信 VPN 服务商提供的 WireGuard 配置",
-                Filter = "WireGuard 配置 (*.conf)|*.conf",
-                CheckFileExists = true
-            };
-            if (dialog.ShowDialog(this) != true) return;
-
-            var validation = manager.ValidateConfig(dialog.FileName);
-            if (!validation.IsValid)
-            {
-                MessageBox.Show(string.Join("\\n", validation.Errors), "WireGuard 配置检查失败",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            var warningText = validation.Warnings.Length == 0
-                ? ""
-                : "\\n\\n提醒：\\n" + string.Join("\\n", validation.Warnings);
-            var confirm = MessageBox.Show(
-                $"配置结构检查通过，隧道名称：{validation.InterfaceName}。{warningText}\\n\\n接下来将调用官方 WireGuard 安装隧道服务，并请求 Windows 管理员权限。是否继续？",
-                "安装 VPN 隧道", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-            if (confirm != MessageBoxResult.Yes) return;
-
-            var result = await manager.InstallTunnelAsync(dialog.FileName);
-            MessageBox.Show(
-                $"已向 WireGuard 提交隧道服务安装请求。当前服务状态：{result.State}。\\n\\n注意：服务存在不等于握手成功或所有游戏流量已进入隧道。还需验证最新握手、路由、DNS 和 IPv6 泄漏。",
-                "WireGuard 隧道服务", MessageBoxButton.OK, MessageBoxImage.Information);
-        }
-        catch (OperationCanceledException)
-        {
-            MessageBox.Show("操作已取消，未继续修改隧道服务。", "操作已取消",
+            await _openRung.ConnectAsync(relayId);
+            VpnStatusText.Text = "已连接 · OpenRung 全局 TUN";
+            MessageBox.Show("OpenRung VPN 已连接。全设备流量正在通过所选中继隧道。", "VPN 已连接",
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"WireGuard 操作失败：{ex.Message}", "VPN 操作失败",
-                MessageBoxButton.OK, MessageBoxImage.Error);
+            VpnStatusText.Text = "连接失败 · " + ex.Message;
+            MessageBox.Show("OpenRung VPN 连接失败：\n" + ex.Message, "VPN 连接失败",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
         }
+        finally
+        {
+            VpnFeatureButton.IsEnabled = true;
+        }
+    }
+
+    private async Task ShowOpenRungNodesAsync()
+    {
+        var dialog = new Window
+        {
+            Title = "OpenRung · 实时中继节点",
+            Width = 900,
+            Height = 520,
+            MinWidth = 720,
+            MinHeight = 420,
+            Owner = this,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Background = new SolidColorBrush(Color.FromRgb(11, 19, 34)),
+            Foreground = Brushes.White
+        };
+
+        var root = new DockPanel { Margin = new Thickness(16) };
+        var header = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 12) };
+        header.Children.Add(new TextBlock
+        {
+            Text = "节点由 OpenRung Broker 实时发现和签名验证；延迟为客户端探测值。",
+            Foreground = Brushes.LightSteelBlue,
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        DockPanel.SetDock(header, Dock.Top);
+        root.Children.Add(header);
+
+        var footer = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(0, 12, 0, 0)
+        };
+        var refresh = new Button { Content = "刷新节点", Padding = new Thickness(16, 8, 16, 8), Margin = new Thickness(0, 0, 8, 0) };
+        var connect = new Button { Content = "连接选中节点", Padding = new Thickness(16, 8, 16, 8), Margin = new Thickness(0, 0, 8, 0) };
+        var close = new Button { Content = "关闭", Padding = new Thickness(16, 8, 16, 8) };
+        footer.Children.Add(refresh);
+        footer.Children.Add(connect);
+        footer.Children.Add(close);
+        DockPanel.SetDock(footer, Dock.Bottom);
+        root.Children.Add(footer);
+
+        var list = new ListView { Background = new SolidColorBrush(Color.FromRgb(16, 26, 43)), Foreground = Brushes.White };
+        var view = new GridView();
+        view.Columns.Add(new GridViewColumn { Header = "节点", DisplayMemberBinding = new System.Windows.Data.Binding(nameof(OpenRungRelay.Name)), Width = 150 });
+        view.Columns.Add(new GridViewColumn { Header = "地区", DisplayMemberBinding = new System.Windows.Data.Binding(nameof(OpenRungRelay.Location)), Width = 130 });
+        view.Columns.Add(new GridViewColumn { Header = "运营方", DisplayMemberBinding = new System.Windows.Data.Binding(nameof(OpenRungRelay.OperatorClass)), Width = 90 });
+        view.Columns.Add(new GridViewColumn { Header = "探测延迟", DisplayMemberBinding = new System.Windows.Data.Binding(nameof(OpenRungRelay.ProbeLatencyMs)) { StringFormat = "{0} ms" }, Width = 90 });
+        view.Columns.Add(new GridViewColumn { Header = "中继地址", DisplayMemberBinding = new System.Windows.Data.Binding(nameof(OpenRungRelay.Host)), Width = 190 });
+        view.Columns.Add(new GridViewColumn { Header = "UDP 打洞", DisplayMemberBinding = new System.Windows.Data.Binding(nameof(OpenRungRelay.PunchCapable)), Width = 80 });
+        list.View = view;
+        root.Children.Add(list);
+        dialog.Content = root;
+
+        async Task RefreshNodesAsync()
+        {
+            refresh.IsEnabled = false;
+            refresh.Content = "正在获取…";
+            try
+            {
+                var relays = await _openRung.DiscoverAsync();
+                list.ItemsSource = relays;
+                if (relays.Count == 0)
+                    MessageBox.Show(dialog, "OpenRung Broker 当前没有返回可用中继节点。请稍后刷新，或检查网络连接。",
+                        "暂无可用节点", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(dialog, "获取 OpenRung 节点失败：\n" + ex.Message,
+                    "节点发现失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally
+            {
+                refresh.IsEnabled = true;
+                refresh.Content = "刷新节点";
+            }
+        }
+
+        refresh.Click += async (_, _) => await RefreshNodesAsync();
+        connect.Click += async (_, _) =>
+        {
+            if (list.SelectedItem is not OpenRungRelay selected)
+            {
+                MessageBox.Show(dialog, "请先选择一个节点。", "未选择节点",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            dialog.Close();
+            await RequestOpenRungVpnAsync(selected.Id);
+        };
+        close.Click += (_, _) => dialog.Close();
+
+        await RefreshNodesAsync();
+        dialog.ShowDialog();
     }
 
     private string? SelectTunnelForRemoval(IReadOnlyList<string> tunnelNames)
