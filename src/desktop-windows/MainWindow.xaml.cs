@@ -1203,9 +1203,9 @@ public partial class MainWindow : Window
         return dialog.ShowDialog() == true ? selector.SelectedItem as string : null;
     }
 
-    private void CdnFeatureButton_Click(object sender, RoutedEventArgs e)
+    private async void CdnFeatureButton_Click(object sender, RoutedEventArgs e)
     {
-        ShowNodeProbeWindow();
+        await ShowOpenRungNodesAsync();
     }
 
     private void DnsFeatureButton_Click(object sender, RoutedEventArgs e)
