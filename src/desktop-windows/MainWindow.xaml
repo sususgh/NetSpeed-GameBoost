@@ -99,8 +99,8 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
-                <Button Grid.Column="0" Style="{StaticResource FeatureCardButton}" Click="VpnFeatureButton_Click">
-                    <StackPanel><TextBlock Text="⚡  VPN" FontSize="17" FontWeight="Bold" Foreground="#65E6C2"/><TextBlock Text="隧道连接" FontSize="12" Margin="0,5,0,0"/><TextBlock Text="尚未配置节点" FontSize="10" Foreground="#9CB8CC" Margin="0,3,0,0"/></StackPanel>
+                <Button x:Name="VpnFeatureButton" Grid.Column="0" Style="{StaticResource FeatureCardButton}" Click="VpnFeatureButton_Click">
+                    <StackPanel><TextBlock Text="⚡  VPN" FontSize="17" FontWeight="Bold" Foreground="#65E6C2"/><TextBlock Text="OpenRung 全局隧道" FontSize="12" Margin="0,5,0,0"/><TextBlock x:Name="VpnStatusText" Text="未连接 · 点击一键连接" FontSize="10" Foreground="#9CB8CC" Margin="0,3,0,0"/></StackPanel>
                 </Button>
                 <Button Grid.Column="1" Style="{StaticResource FeatureCardButton}" BorderBrush="#237DBB" Background="#102947" Click="CdnFeatureButton_Click">
                     <StackPanel><TextBlock Text="◎  RELAY" FontSize="17" FontWeight="Bold" Foreground="#55C9FF"/><TextBlock Text="中继节点检测" FontSize="12" Margin="0,5,0,0"/><TextBlock Text="仅检测用户提供的 TCP 地址" FontSize="10" Foreground="#9CB8CC" Margin="0,3,0,0"/></StackPanel>
