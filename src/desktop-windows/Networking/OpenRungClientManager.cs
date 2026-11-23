@@ -152,18 +152,20 @@ public sealed class OpenRungClientManager : IDisposable
                 connected.TrySetException(new InvalidOperationException($"OpenRung 客户端提前退出，退出码 {process.ExitCode}。"));
         };
 
-        if (!process.Start())
-            throw new InvalidOperationException("无法启动 OpenRung VPN 客户端。");
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-
         try
         {
+            if (!process.Start())
+                throw new InvalidOperationException("无法启动 OpenRung VPN 客户端。");
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
             await connected.Task.WaitAsync(TimeSpan.FromSeconds(90), token);
         }
         catch
         {
-            await StopAsync(CancellationToken.None);
+            if (process.Id > 0)
+                await StopAsync(CancellationToken.None);
+            else
+                ClearProcess(process);
             throw;
         }
     }
