@@ -166,4 +166,33 @@ public sealed class ProductLogicTests
     {
         Assert.Equal(expected, GameProfileService.IsValidProcessName(name));
     }
+
+    [Theory]
+    [InlineData("Local Area Connection* 12", "Microsoft Wi-Fi Direct Virtual Adapter", true)]
+    [InlineData("Wi-Fi", "Intel(R) Wi-Fi 6 AX201", false)]
+    [InlineData("Ethernet", "Realtek PCIe GbE Family Controller", false)]
+    public void PhoneHotspot_AdapterDetection_IsSpecific(string name, string description, bool expected)
+    {
+        Assert.Equal(expected, PhoneHotspotRelayManager.IsHotspotAdapter(name, description));
+    }
+
+    [Fact]
+    public void PhoneHotspot_GameOnlyMode_ExplainsPhoneSideSplitTunnelRequirement()
+    {
+        var description = PhoneHotspotRelayManager.DescribeMode(PhoneRelayMode.GameOnly);
+
+        Assert.Contains("Android", description, StringComparison.Ordinal);
+        Assert.Contains("按应用分流", description, StringComparison.Ordinal);
+        Assert.Contains("WireGuard", description, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PhoneHotspot_AllTrafficMode_UsesWindowsIcs()
+    {
+        var description = PhoneHotspotRelayManager.DescribeMode(PhoneRelayMode.AllPhoneTraffic);
+
+        Assert.Contains("ICS", description, StringComparison.Ordinal);
+        Assert.Contains("Windows 移动热点", description, StringComparison.Ordinal);
+    }
+
 }
