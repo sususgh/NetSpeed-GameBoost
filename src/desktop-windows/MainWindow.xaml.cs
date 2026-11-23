@@ -42,6 +42,8 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _networkHealthCts;
     private bool _networkHealthPollRunning;
     private IReadOnlyList<DnsServerResult> _lastDnsResolverResults = Array.Empty<DnsServerResult>();
+    private readonly PhoneHotspotRelayManager _phoneHotspotRelayManager = new();
+    private PhoneRelayMode _selectedPhoneRelayMode = PhoneRelayMode.AllPhoneTraffic;
 
     public MainWindow()
     {
@@ -680,6 +682,60 @@ public partial class MainWindow : Window
             : $"{bytesPerSecond / kb:0.0} KB/s";
     }
 
+
+    private void PhoneRelayModeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (PhoneRelayModeCombo.SelectedItem is ComboBoxItem item &&
+            Enum.TryParse<PhoneRelayMode>(item.Tag?.ToString(), out var mode))
+        {
+            _selectedPhoneRelayMode = mode;
+            if (PhoneRelayStatus is not null)
+                RefreshPhoneRelayStatus();
+        }
+    }
+
+    private void OpenPhoneHotspotSettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            PhoneHotspotRelayManager.OpenMobileHotspotSettings();
+            PhoneRelayStatus.Text = "已打开 Windows 移动热点设置。请在系统页面手动开启热点；本程序不会擅自修改系统共享或防火墙。";
+        }
+        catch (Exception ex)
+        {
+            PhoneRelayStatus.Text = $"无法打开移动热点设置：{ex.Message}";
+        }
+    }
+
+    private void RefreshPhoneRelayStatusButton_Click(object sender, RoutedEventArgs e)
+    {
+        RefreshPhoneRelayStatus();
+    }
+
+    private void RefreshPhoneRelayStatus()
+    {
+        try
+        {
+            var snapshot = _phoneHotspotRelayManager.GetSnapshot();
+            var upstream = snapshot.CandidateUpstreamAdapters.Count == 0
+                ? "未发现带 IPv4 默认网关的活动上行网卡"
+                : string.Join("；", snapshot.CandidateUpstreamAdapters.Take(3).Select(adapter => adapter.Name));
+            var hotspot = snapshot.HotspotAdapters.Count == 0
+                ? "尚未发现活动的 Wi-Fi Direct 热点虚拟网卡（请先在 Windows 设置中开启热点）"
+                : string.Join("；", snapshot.HotspotAdapters.Select(adapter => $"{adapter.Name} ({adapter.Ipv4Addresses})"));
+            var service = snapshot.SharedAccessServiceRunning ? "SharedAccess 服务正在运行" : "SharedAccess 服务未运行";
+            PhoneRelayStatus.Text =
+                $"检测时间：{snapshot.CheckedAtLocal:HH:mm:ss}\n" +
+                $"上行网卡：{upstream}\n" +
+                $"热点网卡：{hotspot}\n" +
+                $"共享服务：{service}（服务运行不代表 ICS 已正确绑定）\n\n" +
+                PhoneHotspotRelayManager.DescribeMode(_selectedPhoneRelayMode);
+        }
+        catch (Exception ex)
+        {
+            PhoneRelayStatus.Text = $"热点检测失败：{ex.Message}";
+        }
+    }
 
     private void ControlCenterNavButton_Click(object sender, RoutedEventArgs e)
     {
