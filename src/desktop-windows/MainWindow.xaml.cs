@@ -44,6 +44,9 @@ public partial class MainWindow : Window
     private IReadOnlyList<DnsServerResult> _lastDnsResolverResults = Array.Empty<DnsServerResult>();
     private readonly PhoneHotspotRelayManager _phoneHotspotRelayManager = new();
     private PhoneRelayMode _selectedPhoneRelayMode = PhoneRelayMode.AllPhoneTraffic;
+    private readonly LanNodeHost _lanNodeHost = new();
+    private readonly Queue<(double Down, double Up)> _trafficHistory = new();
+    private const int TrafficHistoryCapacity = 60;
 
     public MainWindow()
     {
@@ -54,6 +57,7 @@ public partial class MainWindow : Window
         Loaded += async (_, _) =>
         {
             UpdateNetworkStats();
+            RefreshLanNodeAddresses();
             _timer.Start();
             await InitializeProfilesAsync();
             _networkHealthTimer.Start();
@@ -68,6 +72,7 @@ public partial class MainWindow : Window
             _connectionMonitorTimer.Stop();
             _networkHealthTimer.Stop();
             _networkHealthCts?.Cancel();
+            _lanNodeHost.Dispose();
             _networkHealthCts?.Dispose();
             _routeAnalysisCts?.Cancel();
             _routeAnalysisCts?.Dispose();
@@ -649,6 +654,10 @@ public partial class MainWindow : Window
                 var upBps = Math.Max(0, sent - _lastSent) / seconds;
                 DownloadText.Text = FormatRate(downBps);
                 UploadText.Text = FormatRate(upBps);
+                _trafficHistory.Enqueue((downBps, upBps));
+                while (_trafficHistory.Count > TrafficHistoryCapacity)
+                    _trafficHistory.Dequeue();
+                DrawTrafficChart();
             }
             else
             {
@@ -682,6 +691,106 @@ public partial class MainWindow : Window
             : $"{bytesPerSecond / kb:0.0} KB/s";
     }
 
+
+    private void DrawTrafficChart()
+    {
+        if (TrafficChart is null || TrafficFlowSummary is null)
+            return;
+
+        TrafficChart.Children.Clear();
+        var samples = _trafficHistory.ToArray();
+        if (samples.Length < 2)
+        {
+            TrafficFlowSummary.Text = "正在收集实时流量样本…";
+            return;
+        }
+
+        var width = Math.Max(1, TrafficChart.ActualWidth);
+        var height = Math.Max(1, TrafficChart.ActualHeight);
+        var peak = Math.Max(1024d, samples.Max(sample => Math.Max(sample.Down, sample.Up)));
+        Point ToPoint(int index, double value) =>
+            new((width - 8) * index / Math.Max(1, samples.Length - 1) + 4,
+                height - 5 - (height - 10) * Math.Clamp(value / peak, 0, 1));
+
+        var downLine = new Polyline { Stroke = new SolidColorBrush(Color.FromRgb(39, 215, 242)), StrokeThickness = 2 };
+        var upLine = new Polyline { Stroke = new SolidColorBrush(Color.FromRgb(108, 155, 255)), StrokeThickness = 2 };
+        for (var i = 0; i < samples.Length; i++)
+        {
+            downLine.Points.Add(ToPoint(i, samples[i].Down));
+            upLine.Points.Add(ToPoint(i, samples[i].Up));
+        }
+        TrafficChart.Children.Add(downLine);
+        TrafficChart.Children.Add(upLine);
+        var latest = samples[^1];
+        TrafficFlowSummary.Text = $"下载 {FormatRate(latest.Down)}   ·   上传 {FormatRate(latest.Up)}   ·   最近 {samples.Length} 秒";
+    }
+
+    private void RefreshLanNodeAddressesButton_Click(object sender, RoutedEventArgs e) => RefreshLanNodeAddresses();
+
+    private void RefreshLanNodeAddresses()
+    {
+        var addresses = LanNodeHost.GetLanIpv4Addresses();
+        LanNodeAddressesText.Text = addresses.Count == 0
+            ? "未检测到活动 IPv4 地址。请先连接 Wi-Fi / 网线，或开启 Windows 移动热点。"
+            : string.Join(Environment.NewLine, addresses);
+        if (_lanNodeHost.IsRunning)
+            LanNodeStatus.Text = $"节点运行中：0.0.0.0:{_lanNodeHost.Port} 正在监听；手机请访问上方任一 IP 的对应端口。请求数：{_lanNodeHost.Requests}";
+    }
+
+    private void StartLanNodeButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!int.TryParse(LanNodePortInput.Text.Trim(), out var port) || port is < 1024 or > 65535)
+        {
+            MessageBox.Show("请输入 1024–65535 之间的有效端口。", "端口无效",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            LanNodePortInput.Focus();
+            return;
+        }
+
+        try
+        {
+            _lanNodeHost.Start(port);
+            StartLanNodeButton.IsEnabled = false;
+            StopLanNodeButton.IsEnabled = true;
+            LanNodePortInput.IsEnabled = false;
+            RefreshLanNodeAddresses();
+            LanNodeStatus.Text += Environment.NewLine + "手机浏览器可访问 http://本机局域网IP:" + port + "/；/health 可查看 JSON 健康状态。";
+        }
+        catch (SocketException ex)
+        {
+            LanNodeStatus.Text = $"启动失败：端口 {port} 可能已被占用，或被系统策略阻止。{ex.Message}";
+        }
+        catch (Exception ex)
+        {
+            LanNodeStatus.Text = $"启动失败：{ex.Message}";
+        }
+    }
+
+    private async void StopLanNodeButton_Click(object sender, RoutedEventArgs e)
+    {
+        await _lanNodeHost.StopAsync();
+        StartLanNodeButton.IsEnabled = true;
+        StopLanNodeButton.IsEnabled = false;
+        LanNodePortInput.IsEnabled = true;
+        LanNodeStatus.Text = "局域网节点已停止。";
+    }
+
+    private void CopyLanNodeAddressButton_Click(object sender, RoutedEventArgs e)
+    {
+        var address = LanNodeHost.GetLanIpv4Addresses().FirstOrDefault();
+        if (address is null)
+        {
+            LanNodeStatus.Text = "没有可复制的局域网 IPv4 地址。";
+            return;
+        }
+
+        var port = _lanNodeHost.IsRunning && _lanNodeHost.Port > 0
+            ? _lanNodeHost.Port
+            : (int.TryParse(LanNodePortInput.Text, out var configuredPort) ? configuredPort : 8765);
+        var url = $"http://{address}:{port}/";
+        Clipboard.SetText(url);
+        LanNodeStatus.Text = $"已复制：{url}";
+    }
 
     private void PhoneRelayModeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -755,7 +864,10 @@ public partial class MainWindow : Window
 
     private void NodesNavButton_Click(object sender, RoutedEventArgs e)
     {
-        ShowNodeProbeWindow();
+        LanNodePanel.BringIntoView();
+        RefreshLanNodeAddresses();
+        LanNodePortInput.Focus();
+        LanNodeStatus.Text = "这里显示本机局域网节点。设置端口后点击“启动局域网节点”，手机可用浏览器访问本机 IP:端口。";
     }
 
     private void DnsNavButton_Click(object sender, RoutedEventArgs e)
